@@ -4,7 +4,7 @@ import ReactDOM from 'react-dom/client';
 import { Plane, Heart, Clock, Calendar, CheckCircle, RefreshCw, MapPin, Utensils, Moon, Car, Settings, BarChart, Trash2, Plus, Edit2, X, Save, Share2, Info } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
-// --- Types ---
+// --- FROM types.ts ---
 type TaskType = 'איסוף' | 'ארוחה' | 'מקלחת והשכבה' | 'לינה' | 'עזרה כללית';
 
 interface CareTask {
@@ -38,7 +38,93 @@ interface FamilyMember {
   isAdmin: boolean;
 }
 
-// --- Constants ---
+interface ExtractionResult {
+  flightNumber: string;
+  origin: string;
+  destination: string;
+  departureTime: string;
+  arrivalTime: string;
+  dateLabel: string;
+  careStart: string;
+  careEnd: string;
+  suggestedTasks: { type: TaskType; description: string; time: string; dateLabel: string }[];
+}
+
+// --- FROM services/geminiService.ts ---
+class GeminiService {
+  private ai: GoogleGenAI;
+  constructor() {
+    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  }
+
+  async extractFlightAndCareDetails(eventStrings: string[]): Promise<ExtractionResult[]> {
+    const prompt = `אתה מתאם טיפול משפחתי חכם בשם "דואגים ללולי". נתח את אירועי היומן הבאים עבור אמא (דיילת אוויר).
+    
+    1. זהה אירועי עבודה (טיסות, כוננות, משמרת) והתעלם מאירועים אישיים.
+    2. עבור כל טיסה:
+       - חלץ מספר טיסה, מוצא ויעד.
+       - חלץ תאריך בפורמט DD/MM/YYYY והכנס אותו ל-dateLabel.
+       - חשב "חלון טיפול": שעה לפני ההמראה ועד שעה אחרי הנחיתה.
+       - צור 3 משימות טיפול בילדה "עלמא" בעברית: 
+         * "איסוף של עלמא מהמסגרת" (לפי שעת היציאה).
+         * "ארוחת ערב לעלמא" (סביב 18:30 אם בטווח הטיסה).
+         * "מקלחת והשכבה של עלמא" (סביב 20:00 אם בטווח הטיסה).
+    
+    החזר רשימת JSON בעברית בלבד. ודא שכל משימה כוללת dateLabel (למשל: "יום חמישי 25/10").
+
+    אירועים לניתוח:
+    ${eventStrings.join('\n---\n')}
+    `;
+
+    const response = await this.ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              flightNumber: { type: Type.STRING },
+              origin: { type: Type.STRING },
+              destination: { type: Type.STRING },
+              departureTime: { type: Type.STRING },
+              arrivalTime: { type: Type.STRING },
+              dateLabel: { type: Type.STRING },
+              careStart: { type: Type.STRING },
+              careEnd: { type: Type.STRING },
+              suggestedTasks: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    type: { type: Type.STRING },
+                    description: { type: Type.STRING },
+                    time: { type: Type.STRING },
+                    dateLabel: { type: Type.STRING }
+                  },
+                  required: ["type", "description", "time", "dateLabel"]
+                }
+              }
+            },
+            required: ["flightNumber", "origin", "destination", "departureTime", "arrivalTime", "dateLabel", "careStart", "careEnd", "suggestedTasks"]
+          }
+        }
+      }
+    });
+
+    try {
+      return JSON.parse(response.text || '[]');
+    } catch (e) {
+      console.error("Failed to parse", e);
+      return [];
+    }
+  }
+}
+const geminiService = new GeminiService();
+
+// --- FROM App.tsx ---
 const FAMILY_MEMBERS: FamilyMember[] = [
   { id: 'm1', name: 'אמא', role: 'אמא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mom', isAdmin: true },
   { id: 'f1', name: 'אבא', role: 'אבא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dad', isAdmin: true },
@@ -53,7 +139,6 @@ const getTaskIcon = (type: string, size = 28) => {
   return <Heart size={size} className="text-rose-500" />;
 };
 
-// --- App Component ---
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<FamilyMember>(FAMILY_MEMBERS[2]); 
   const [shifts, setShifts] = useState<FlightShift[]>([]);
@@ -61,7 +146,6 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState<'open' | 'mine' | 'admin'>('open');
   
-  // Backoffice State
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editShiftForm, setEditShiftForm] = useState<Partial<FlightShift>>({});
@@ -87,50 +171,11 @@ const App: React.FC = () => {
     ];
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-      const prompt = `אתה מתאם טיפול משפחתי חכם. נתח את אירועי היומן עבור אמא דיילת. זהה טיסות וצור 3 משימות טיפול בילדה "עלמא" (איסוף, ארוחה, השכבה). החזר JSON בעברית.`;
-      
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt + "\n" + mockEvents.join('\n'),
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                flightNumber: { type: Type.STRING },
-                origin: { type: Type.STRING },
-                destination: { type: Type.STRING },
-                departureTime: { type: Type.STRING },
-                arrivalTime: { type: Type.STRING },
-                dateLabel: { type: Type.STRING },
-                careStart: { type: Type.STRING },
-                careEnd: { type: Type.STRING },
-                suggestedTasks: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      type: { type: Type.STRING },
-                      description: { type: Type.STRING },
-                      time: { type: Type.STRING },
-                      dateLabel: { type: Type.STRING }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      });
-
-      const results = JSON.parse(response.text || '[]');
+      const results = await geminiService.extractFlightAndCareDetails(mockEvents);
       const newShifts: FlightShift[] = [];
       const newTasks: CareTask[] = [];
 
-      results.forEach((res: any, idx: number) => {
+      results.forEach((res, idx) => {
         const sId = `s-${Date.now()}-${idx}`;
         newShifts.push({
           id: sId,
@@ -145,7 +190,7 @@ const App: React.FC = () => {
           status: 'ממתין'
         });
 
-        res.suggestedTasks.forEach((st: any, sIdx: number) => {
+        res.suggestedTasks.forEach((st, sIdx) => {
           newTasks.push({
             id: `t-${sId}-${sIdx}`,
             shiftId: sId,
@@ -210,7 +255,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 max-w-md mx-auto shadow-2xl overflow-hidden font-['Assistant'] relative">
-      
       <header className="bg-rose-500 pt-10 pb-6 px-6 text-white shadow-lg shrink-0 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-white/20"></div>
         <div className="flex justify-between items-center relative z-10">
@@ -351,59 +395,118 @@ const App: React.FC = () => {
             <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
               <CheckCircle className="text-emerald-500" /> התוכניות שלי עם עלמא
             </h2>
-            {tasks.filter(t => t.assignedTo === currentUser.id).map(task => (
-              <div key={task.id} className="bg-white p-6 rounded-[32px] shadow-sm border-r-[12px] border-r-emerald-500 flex justify-between items-center">
-                <div>
-                  <p className="text-xs text-slate-400 font-black uppercase mb-1">{task.dateLabel} • {task.time}</p>
-                  <p className="text-xl font-black text-slate-800">{task.description}</p>
-                </div>
-                <button onClick={() => cancelTask(task.id)} className="bg-red-50 p-4 rounded-2xl text-red-300 hover:text-red-500 transition-colors">
-                  <Trash2 size={24} />
-                </button>
+            {tasks.filter(t => t.assignedTo === currentUser.id).length === 0 ? (
+              <div className="text-center py-20 bg-white rounded-[40px] border-2 border-dashed border-slate-200">
+                <p className="text-slate-400 font-black text-lg">עוד לא נרשמת לשום משימה...</p>
+                <p className="text-sm text-slate-400 mt-2 px-10">חזרו לדף הבית ובחרו מתי תרצו לבלות עם עלמא הקטנה!</p>
               </div>
-            ))}
+            ) : (
+              tasks.filter(t => t.assignedTo === currentUser.id).map(task => (
+                <div key={task.id} className="bg-white p-6 rounded-[32px] shadow-sm border-r-[12px] border-r-emerald-500 flex justify-between items-center">
+                  <div>
+                    <p className="text-xs text-slate-400 font-black uppercase mb-1">{task.dateLabel} • {task.time}</p>
+                    <p className="text-xl font-black text-slate-800">{task.description}</p>
+                  </div>
+                  <button onClick={() => cancelTask(task.id)} className="bg-red-50 p-4 rounded-2xl text-red-300 hover:text-red-500 transition-colors">
+                    <Trash2 size={24} />
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         )}
 
         {activeTab === 'admin' && currentUser.isAdmin && (
           <div className="space-y-6 animate-in fade-in duration-300 pb-10">
-             <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between">
               <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                <Settings className="text-indigo-500" /> ניהול הורים
+                <Settings className="text-indigo-500" /> ניהול הורים (Backoffice)
               </h2>
+              <button className="bg-indigo-500 text-white p-2 rounded-xl shadow-lg active:scale-95 transition-all">
+                <Share2 size={18} />
+              </button>
             </div>
-            {/* Backoffice Logic goes here - Restored from original App.tsx */}
-            {shifts.map(shift => (
-              <div key={shift.id} className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-black text-slate-800 text-lg">{shift.flightNumber} • {shift.dateLabel}</p>
-                  </div>
-                  <button onClick={() => removeShift(shift.id)} className="p-3 bg-red-50 text-red-300 rounded-2xl"><Trash2 size={20} /></button>
+
+            <div className="grid grid-cols-2 gap-4">
+               <div className="bg-indigo-50 p-5 rounded-[32px] border border-indigo-100">
+                 <p className="text-[10px] font-black text-indigo-400 uppercase">טיסות במערכת</p>
+                 <p className="text-3xl font-black text-indigo-700 mt-1">{shifts.length}</p>
+               </div>
+               <div className="bg-emerald-50 p-5 rounded-[32px] border border-emerald-100">
+                 <p className="text-[10px] font-black text-emerald-400 uppercase">כיסוי עזרה</p>
+                 <p className="text-3xl font-black text-emerald-700 mt-1">
+                   {tasks.length > 0 ? Math.round((tasks.filter(t => t.assignedTo).length / tasks.length) * 100) : 0}%
+                 </p>
+               </div>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-sm font-black text-slate-500 flex items-center gap-2 px-2">
+                <Edit2 size={14} /> עריכת טיסות ומשימות של עלמא
+              </p>
+              
+              {shifts.map(shift => (
+                <div key={shift.id} className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm space-y-4">
+                  {editingShiftId === shift.id ? (
+                    <div className="space-y-3 animate-in fade-in">
+                      <div className="grid grid-cols-2 gap-2">
+                        <input value={editShiftForm.flightNumber} onChange={e => setEditShiftForm({...editShiftForm, flightNumber: e.target.value})} className="w-full bg-slate-50 p-3 rounded-xl text-xs font-bold border border-slate-200" placeholder="מס' טיסה" />
+                        <input value={editShiftForm.dateLabel} onChange={e => setEditShiftForm({...editShiftForm, dateLabel: e.target.value})} className="w-full bg-slate-50 p-3 rounded-xl text-xs font-bold border border-slate-200" placeholder="תאריך" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input value={editShiftForm.origin} onChange={e => setEditShiftForm({...editShiftForm, origin: e.target.value})} className="w-full bg-slate-50 p-3 rounded-xl text-xs font-bold border border-slate-200" placeholder="מוצא" />
+                        <input value={editShiftForm.destination} onChange={e => setEditShiftForm({...editShiftForm, destination: e.target.value})} className="w-full bg-slate-50 p-3 rounded-xl text-xs font-bold border border-slate-200" placeholder="יעד" />
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={saveShiftEdit} className="flex-1 bg-indigo-500 text-white p-3 rounded-xl font-bold text-xs">שמור טיסה</button>
+                        <button onClick={() => setEditingShiftId(null)} className="bg-slate-100 p-3 rounded-xl"><X size={14}/></button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-black text-slate-800 text-lg leading-none">{shift.flightNumber} • {shift.dateLabel}</p>
+                        <p className="text-xs text-slate-400 mt-1 font-bold">{shift.origin} ➔ {shift.destination}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => startEditingShift(shift)} className="p-3 bg-indigo-50 text-indigo-500 rounded-2xl hover:bg-indigo-100 transition-colors"><Edit2 size={20} /></button>
+                        <button onClick={() => removeShift(shift.id)} className="p-3 bg-red-50 text-red-300 rounded-2xl hover:bg-red-100 transition-colors"><Trash2 size={20} /></button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-200 px-6 pt-3 pb-8 flex justify-between items-center z-50 max-w-md mx-auto">
-        <button onClick={() => setActiveTab('open')} className={`flex flex-col items-center gap-1 ${activeTab === 'open' ? 'text-rose-500' : 'text-slate-400'}`}>
+        <button 
+          onClick={() => setActiveTab('open')}
+          className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'open' ? 'text-rose-500 scale-110' : 'text-slate-400'}`}
+        >
           <div className={`p-2 rounded-2xl ${activeTab === 'open' ? 'bg-rose-50 shadow-inner' : ''}`}>
-            <Calendar size={28} />
+            <Calendar size={28} strokeWidth={activeTab === 'open' ? 3 : 2} />
           </div>
           <span className="text-[10px] font-black uppercase">עזרה</span>
         </button>
-        <button onClick={() => setActiveTab('mine')} className={`flex flex-col items-center gap-1 ${activeTab === 'mine' ? 'text-rose-500' : 'text-slate-400'}`}>
+        <button 
+          onClick={() => setActiveTab('mine')}
+          className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'mine' ? 'text-rose-500 scale-110' : 'text-slate-400'}`}
+        >
           <div className={`p-2 rounded-2xl ${activeTab === 'mine' ? 'bg-rose-50 shadow-inner' : ''}`}>
-            <CheckCircle size={28} />
+            <CheckCircle size={28} strokeWidth={activeTab === 'mine' ? 3 : 2} />
           </div>
           <span className="text-[10px] font-black uppercase">המשימות שלי</span>
         </button>
         {currentUser.isAdmin && (
-          <button onClick={() => setActiveTab('admin')} className={`flex flex-col items-center gap-1 ${activeTab === 'admin' ? 'text-indigo-500' : 'text-slate-400'}`}>
+          <button 
+            onClick={() => setActiveTab('admin')}
+            className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'admin' ? 'text-indigo-500 scale-110' : 'text-slate-400'}`}
+          >
             <div className={`p-2 rounded-2xl ${activeTab === 'admin' ? 'bg-indigo-50 shadow-inner' : ''}`}>
-              <Settings size={28} />
+              <Settings size={28} strokeWidth={activeTab === 'admin' ? 3 : 2} />
             </div>
             <span className="text-[10px] font-black uppercase">ניהול</span>
           </button>

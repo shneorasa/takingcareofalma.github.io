@@ -15,7 +15,7 @@
   <script src="https://unpkg.com/@babel/standalone@7.23.4/babel.min.js"></script>
   
   <style>
-    body { 
+    body {
       font-family: 'Assistant', sans-serif;
       -webkit-tap-highlight-color: transparent;
       margin: 0;
@@ -62,8 +62,7 @@
     import { GoogleGenAI, Type } from "@google/genai";
 
     const FAMILY_KEY = "ALMA2024";
-    // ה-URL שסופק לעבודה מול Apps Script
-    const API_URL = "https://script.google.com/a/macros/luxon-tech.com/s/AKfycbwveHaZwysnQsc_oW2kL_bzQjvYA4GeqLYsdsQHRsNuBvUASZoiySPk0YfrUFWOjdO7/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbyzYEtv8Iim4XmvmMYaC1hcqrFh99tMtKh67r7uLWx737gB6A8Ht6tvDpGYs5b9wL9M/exec";
 
     const DEFAULT_ALMA_TASKS = [
       { description: 'איסוף מהגן', time: '16:30' },
@@ -76,9 +75,9 @@
       const [isAuthorized, setIsAuthorized] = useState(false);
       const [currentUser, setCurrentUser] = useState(null);
       const [members, setMembers] = useState([
-        { id: 'm1', name: 'אמא', role: 'אמא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mom', isAdmin: true, email: 'mom@gmail.com' },
-        { id: 'f1', name: 'אבא', role: 'אבא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dad', isAdmin: true, email: 'dad@gmail.com' },
-        { id: 'g1', name: 'סבתא', role: 'סבתא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Grandma', isAdmin: false, email: 'grandma@gmail.com' },
+        { id: 'm1', name: 'אמא', role: 'אמא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mom', isAdmin: true },
+        { id: 'f1', name: 'אבא', role: 'אבא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dad', isAdmin: true },
+        { id: 'g1', name: 'סבתא', role: 'סבתא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Grandma', isAdmin: false },
       ]);
       const [shifts, setShifts] = useState([]);
       const [tasks, setTasks] = useState([]);
@@ -87,14 +86,68 @@
       const [isCloudLoading, setIsCloudLoading] = useState(true);
       
       const isInitialMount = useRef(true);
-
       const [adminView, setAdminView] = useState('dashboard');
       const [drafts, setDrafts] = useState(null);
       const [editingShift, setEditingShift] = useState(null);
       const [editingTasks, setEditingTasks] = useState([]);
-      
       const [keyInput, setKeyInput] = useState("");
       const [authError, setAuthError] = useState("");
+
+      const loadData = async (showLoader = false) => {
+        if (showLoader) setIsSyncing(true);
+        try {
+          const response = await fetch(API_URL);
+          if (!response.ok) throw new Error("Fetch failed");
+          const cloudData = await response.json();
+          if (cloudData) {
+            if (cloudData.shifts) setShifts(cloudData.shifts);
+            if (cloudData.tasks) setTasks(cloudData.tasks);
+            if (cloudData.members) setMembers(cloudData.members);
+          }
+        } catch (err) {
+          console.error("Load Data Error:", err);
+          const s = localStorage.getItem('family_alma_v9');
+          const t = localStorage.getItem('tasks_alma_v9');
+          if (s) setShifts(JSON.parse(s));
+          if (t) setTasks(JSON.parse(t));
+        } finally {
+          setIsCloudLoading(false);
+          setIsSyncing(false);
+          isInitialMount.current = false;
+        }
+      };
+
+      const saveFlight = async (flightData, tasksData) => {
+        setIsSyncing(true);
+        try {
+          await fetch(API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify({
+              action: "updateFlightAndTasks",
+              flightData: flightData,
+              tasksData: tasksData
+            }),
+            headers: { 'Content-Type': 'text/plain' }
+          });
+          console.log("Save to Google Sheets sent (no-cors mode)");
+          alert("הנתונים נשלחו לסנכרון מול הענן המשפחתי");
+        } catch (err) {
+          console.error("Save Flight Error:", err);
+          alert("שגיאה בסנכרון לענן");
+        } finally {
+          setTimeout(() => setIsSyncing(false), 1000);
+        }
+      };
+
+      useEffect(() => {
+        const session = localStorage.getItem('alma_session_v9');
+        if (session) {
+          setIsAuthorized(true);
+          setCurrentUser(JSON.parse(session));
+        }
+        loadData();
+      }, []);
 
       const getDaysBetween = useCallback((startStr, endStr) => {
         if (!startStr || !endStr) return [];
@@ -114,73 +167,6 @@
         return d.toLocaleDateString('he-IL', { weekday: 'short', day: 'numeric', month: 'numeric' });
       };
 
-      useEffect(() => {
-        const fetchAllData = async () => {
-          setIsCloudLoading(true);
-          try {
-            // בשימוש ב-GET מול GAS, ה-Redirect מטופל אוטומטית ע"י הדפדפן אם המדיניות מאפשרת
-            const response = await fetch(API_URL);
-            if (!response.ok) throw new Error("Network error");
-            const cloudData = await response.json();
-            if (cloudData) {
-              if (cloudData.shifts) setShifts(cloudData.shifts);
-              if (cloudData.tasks) setTasks(cloudData.tasks);
-              if (cloudData.members) setMembers(cloudData.members);
-            }
-          } catch (err) {
-            console.warn("Cloud Load Failed, using localStorage fallback", err);
-            const data = localStorage.getItem('family_alma_v9');
-            const tasksData = localStorage.getItem('tasks_alma_v9');
-            if (data) setShifts(JSON.parse(data));
-            if (tasksData) setTasks(JSON.parse(tasksData));
-          } finally {
-            setIsCloudLoading(false);
-            isInitialMount.current = false;
-          }
-        };
-
-        const session = localStorage.getItem('alma_session_v9');
-        if (session) {
-          setIsAuthorized(true);
-          setCurrentUser(JSON.parse(session));
-        }
-        fetchAllData();
-      }, []);
-
-      useEffect(() => {
-        if (isInitialMount.current || !isAuthorized) return;
-
-        const syncToCloud = async () => {
-          setIsSyncing(true);
-          try {
-            /** 
-             * פתרון לשגיאת Failed to fetch מול Google Apps Script:
-             * 1. שימוש ב-Content-Type: text/plain מונע מהדפדפן לשלוח preflight OPTIONS request,
-             *    שגוגל סקריפט לא יודע לטפל בו. הנתונים עדיין יגיעו כ-JSON ל-doPost בשרת.
-             * 2. שימוש ב-mode: 'no-cors' מאפשר לשלוח את הבקשה גם אם ה-Redirect לא מחזיר כותרות CORS.
-             */
-            await fetch(API_URL, {
-              method: 'POST',
-              mode: 'no-cors', 
-              body: JSON.stringify({ shifts, tasks, members }),
-              headers: { 'Content-Type': 'text/plain' }
-            });
-            
-            localStorage.setItem('family_alma_v9', JSON.stringify(shifts));
-            localStorage.setItem('tasks_alma_v9', JSON.stringify(tasks));
-            localStorage.setItem('alma_members_v9', JSON.stringify(members));
-          } catch (err) {
-            console.error("Cloud Save Sync Problem (likely CORS or Network)", err);
-          } finally {
-            // מכיוון ש-no-cors לא מחזיר סטטוס, אנחנו ממתינים קצת ואז מסיימים את חיווי הסנכרון
-            setTimeout(() => setIsSyncing(false), 500);
-          }
-        };
-
-        const timer = setTimeout(syncToCloud, 2000);
-        return () => clearTimeout(timer);
-      }, [shifts, tasks, members, isAuthorized]);
-
       const handleLogin = (member) => {
         if (keyInput.toUpperCase() === FAMILY_KEY) {
           setCurrentUser(member);
@@ -193,114 +179,94 @@
       };
 
       const handleSmartImport = async () => {
-        const rawText = prompt('הדבק את פרטי הטיסה (מיומן/וואטסאפ). חפש: Flight, Dep, Arr, TLV:');
+        const rawText = prompt('הדבק את פרטי הטיסה (מיומן/וואטסאפ).');
         if (!rawText || rawText.length < 5) return;
         setIsSyncing(true);
-        
         try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const promptMsg = `נתח את הטקסט עבור טיסות של אמא דיילת.
-          חפש דפוסים כמו "Flight [Number]", "Dep:", "Arr:".
-          הפק JSON של מערך טיסות. לכל טיסה כלול: 
-          flightNumber, origin, destination, departureDate (YYYY-MM-DD), arrivalDate (YYYY-MM-DD), 
-          pickupTime, departureTime, landingTime, returnHomeTime, 
-          isLayover (בולאני).
-          החזר JSON נקי בלבד. טקסט: "${rawText}"`;
-
           const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
-            contents: promptMsg,
+            contents: `נתח טיסות: ${rawText}. הפק JSON של מערך טיסות עם: flightNumber, origin, destination, departureDate, arrivalDate, pickupTime, departureTime, landingTime, returnHomeTime.`,
             config: { responseMimeType: "application/json" }
           });
-
           const results = JSON.parse(response.text.replace(/```json|```/g, '').trim());
-          
           const resultsWithTasks = results.map(res => {
             const days = getDaysBetween(res.departureDate, res.arrivalDate);
             const suggestedTasks = [];
-            days.forEach(day => {
-              DEFAULT_ALMA_TASKS.forEach(template => {
-                suggestedTasks.push({ ...template, date: day });
-              });
-            });
+            days.forEach(day => DEFAULT_ALMA_TASKS.forEach(t => suggestedTasks.push({...t, date: day})));
             return { ...res, suggestedTasks };
           });
-
           setDrafts(resultsWithTasks);
           setAdminView('draft_verify');
         } catch (e) {
-          alert('שגיאה בניתוח הטקסט ע"י ה-AI.');
+          alert('שגיאת AI בייבוא.');
         } finally {
           setIsSyncing(false);
         }
       };
 
       const finalizeImport = () => {
-        const newShifts = [...shifts];
-        const newTasks = [...tasks];
         drafts.forEach((d, idx) => {
           const sId = `s-${Date.now()}-${idx}`;
-          newShifts.push({ ...d, id: sId });
-          d.suggestedTasks.forEach((t, tIdx) => {
-            newTasks.push({ 
-              id: `t-${sId}-${tIdx}`, 
-              shiftId: sId, 
-              description: t.description, 
-              time: t.time, 
-              dateLabel: t.date,
-              assignedTo: null
-            });
-          });
+          const currentFlightData = { ...d, id: sId };
+          const currentTasksData = d.suggestedTasks.map((t, tIdx) => ({
+            id: `t-${sId}-${tIdx}`,
+            shiftId: sId,
+            description: t.description,
+            time: t.time,
+            dateLabel: t.date,
+            assignedTo: null
+          }));
+          
+          setShifts(prev => [...prev, currentFlightData]);
+          setTasks(prev => [...prev, ...currentTasksData]);
+          saveFlight(currentFlightData, currentTasksData);
         });
-        setShifts(newShifts);
-        setTasks(newTasks);
         setDrafts(null);
         setAdminView('dashboard');
       };
 
-      const startEditFlight = (shift) => {
-        setEditingShift({ ...shift });
-        setEditingTasks(tasks.filter(t => t.shiftId === shift.id));
-        setAdminView('edit_flight');
-      };
-
-      const saveFullFlight = () => {
-        const updatedShifts = shifts.some(s => s.id === editingShift.id)
-          ? shifts.map(s => s.id === editingShift.id ? editingShift : s)
-          : [...shifts, editingShift];
-        
+      const saveFullFlightHandler = () => {
+        const updatedShifts = shifts.some(s => s.id === editingShift.id) ? shifts.map(s => s.id === editingShift.id ? editingShift : s) : [...shifts, editingShift];
         const otherTasks = tasks.filter(t => t.shiftId !== editingShift.id);
+        const finalTasks = [...otherTasks, ...editingTasks];
+        
         setShifts(updatedShifts);
-        setTasks([...otherTasks, ...editingTasks]);
+        setTasks(finalTasks);
+        saveFlight(editingShift, editingTasks);
         setAdminView('dashboard');
       };
 
       const generateDefaultTasksForEditing = () => {
         const days = getDaysBetween(editingShift.departureDate, editingShift.arrivalDate);
         const newTasks = [];
-        days.forEach(day => {
-          DEFAULT_ALMA_TASKS.forEach((template, i) => {
-            newTasks.push({
-              id: `t-gen-${day}-${i}-${Date.now()}`,
-              shiftId: editingShift.id,
-              description: template.description,
-              time: template.time,
-              dateLabel: day,
-              assignedTo: null
-            });
-          });
-        });
+        days.forEach(day => DEFAULT_ALMA_TASKS.forEach((template, i) => {
+          newTasks.push({ id: `t-gen-${day}-${i}-${Date.now()}`, shiftId: editingShift.id, description: template.description, time: template.time, dateLabel: day, assignedTo: null });
+        }));
         setEditingTasks(newTasks);
       };
 
-      const claimTask = (tid) => setTasks(prev => prev.map(t => t.id === tid ? { ...t, assignedTo: currentUser.id } : t));
-      const unclaimTask = (tid) => setTasks(prev => prev.map(t => t.id === tid ? { ...t, assignedTo: null } : t));
+      const claimTask = (tid) => {
+        const updatedTasks = tasks.map(t => t.id === tid ? { ...t, assignedTo: currentUser.id } : t);
+        setTasks(updatedTasks);
+        // Sync full state for task claim
+        fetch(API_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          body: JSON.stringify({ action: "syncTasks", tasks: updatedTasks }),
+          headers: { 'Content-Type': 'text/plain' }
+        });
+      };
 
-      const getTaskIcon = (desc) => {
-        if (desc.includes('איסוף')) return <Car className="text-blue-500" size={18}/>;
-        if (desc.includes('ארוחה') || desc.includes('ערב')) return <Utensils className="text-orange-500" size={18}/>;
-        if (desc.includes('מקלחת') || desc.includes('הרדמה') || desc.includes('השכבה')) return <Moon className="text-indigo-500" size={18}/>;
-        return <Heart className="text-rose-500" size={18}/>;
+      const unclaimTask = (tid) => {
+        const updatedTasks = tasks.map(t => t.id === tid ? { ...t, assignedTo: null } : t);
+        setTasks(updatedTasks);
+        fetch(API_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          body: JSON.stringify({ action: "syncTasks", tasks: updatedTasks }),
+          headers: { 'Content-Type': 'text/plain' }
+        });
       };
 
       const Header = () => (
@@ -310,11 +276,13 @@
                  <div className="bg-white/20 p-2.5 rounded-2xl shadow-inner"><Heart size={26} className="fill-white" /></div>
                  <div>
                     <h1 className="text-xl font-black tracking-tight leading-none">דואגים לעלמא</h1>
-                    <p className="text-[9px] font-bold opacity-70 mt-1 uppercase tracking-widest">Family Care Cloud</p>
+                    <p className="text-[9px] font-bold opacity-70 mt-1 uppercase tracking-tighter">Google Sheet Storage</p>
                  </div>
               </div>
               <div className="flex items-center gap-2">
-                 {isSyncing && <div className="loader border-white/30 border-t-white w-5 h-5"></div>}
+                 <button onClick={() => loadData(true)} disabled={isSyncing} className="p-2.5 rounded-xl border border-white/20 active:scale-90 transition-all">
+                   <RefreshCw size={20} className={isSyncing ? 'animate-spin' : ''} />
+                 </button>
                  <button onClick={() => { localStorage.removeItem('alma_session_v9'); window.location.reload(); }} className="bg-rose-600 p-2.5 rounded-xl border border-white/20 active:scale-90 transition-all">
                    <LogIn size={20} className="rotate-180" />
                  </button>
@@ -327,11 +295,11 @@
         <nav className="fixed bottom-0 left-0 right-0 glass border-t border-slate-200 px-8 pt-3 pb-8 flex justify-between items-center z-50 max-w-[450px] mx-auto safe-bottom shadow-2xl">
           <button onClick={() => setActiveTab('open')} className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'open' ? 'text-rose-600 scale-110 font-black' : 'text-slate-300'}`}>
             <Calendar size={28} strokeWidth={activeTab === 'open' ? 3 : 2} />
-            <span className="text-[10px] uppercase font-black">לו"ז עזרה</span>
+            <span className="text-[10px] uppercase font-black">עזרה</span>
           </button>
           <button onClick={() => setActiveTab('mine')} className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'mine' ? 'text-rose-600 scale-110 font-black' : 'text-slate-300'}`}>
             <CheckCircle size={28} strokeWidth={activeTab === 'mine' ? 3 : 2} />
-            <span className="text-[10px] uppercase font-black">שלי</span>
+            <span className="text-[10px] uppercase font-black">המשימות שלי</span>
           </button>
           {currentUser?.isAdmin && (
             <button onClick={() => { setActiveTab('admin'); setAdminView('dashboard'); }} className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'admin' ? 'text-indigo-600 scale-110 font-black' : 'text-slate-300'}`}>
@@ -345,19 +313,14 @@
       if (!isAuthorized) {
         return (
           <div className="flex flex-col h-screen bg-rose-500 items-center justify-center p-10 text-white animate-in relative overflow-hidden">
-             <div className="bg-white/20 p-8 rounded-[50px] mb-8 shadow-2xl backdrop-blur-md border border-white/20">
-               <Shield size={70} className="fill-white" />
-             </div>
-             <h1 className="text-3xl font-black mb-1 tracking-tighter text-center leading-tight">דואגים לעלמא<br/>הסביבה המשפחתית</h1>
+             <div className="bg-white/20 p-8 rounded-[50px] mb-8 shadow-2xl border border-white/20"><Shield size={70} className="fill-white" /></div>
+             <h1 className="text-3xl font-black mb-1 tracking-tighter text-center">דואגים לעלמא</h1>
              <div className="w-full max-w-xs space-y-6 mt-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest opacity-60 mr-2">מפתח משפחתי</label>
-                  <input type="text" value={keyInput} onChange={e => setKeyInput(e.target.value)} placeholder="קוד סודי..." className="w-full bg-white/15 border-white/20 text-white placeholder:text-rose-200 text-center font-black h-14" />
-                </div>
+                <input type="text" value={keyInput} onChange={e => setKeyInput(e.target.value)} placeholder="קוד משפחתי..." className="w-full bg-white/15 border-white/20 text-white placeholder:text-rose-200 text-center font-black h-14" />
                 {authError && <div className="bg-red-600/50 p-3 rounded-2xl text-[10px] font-bold text-center border border-red-400 animate-pulse">{authError}</div>}
                 <div className="grid grid-cols-2 gap-3">
                   {members.map(m => (
-                    <button key={m.id} onClick={() => handleLogin(m)} className="bg-white/10 p-4 rounded-3xl border border-white/10 hover:bg-white/20 transition-all flex flex-col items-center gap-2">
+                    <button key={m.id} onClick={() => handleLogin(m)} className="bg-white/10 p-4 rounded-3xl border border-white/10 flex flex-col items-center gap-2">
                       <img src={m.avatar} className="w-12 h-12 rounded-full border-2 border-white/20" />
                       <span className="text-xs font-black">{m.name}</span>
                     </button>
@@ -372,7 +335,7 @@
         return (
           <div className="flex flex-col h-screen items-center justify-center bg-slate-50 gap-4">
              <div className="loader w-12 h-12"></div>
-             <p className="font-black text-rose-500 animate-pulse">מתחבר לענן המשפחתי...</p>
+             <p className="font-black text-rose-500 animate-pulse uppercase tracking-tighter">טוען מהענן המשותף...</p>
           </div>
         );
       }
@@ -380,48 +343,33 @@
       return (
         <div className="flex flex-col h-screen bg-slate-50 max-w-[450px] mx-auto shadow-2xl overflow-hidden relative border-x border-slate-200">
           <Header />
-          
           <main className="flex-1 overflow-y-auto p-4 space-y-6 pb-32 no-scrollbar">
-            
             {activeTab === 'open' && (
               <div className="space-y-6 animate-in">
-                 <div className="flex items-center justify-between px-2">
-                   <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><MapPin size={22} className="text-rose-500"/> לוח משימות פתוח</h2>
-                 </div>
+                 <h2 className="text-xl font-black text-slate-800 flex items-center gap-2 px-2"><MapPin size={22} className="text-rose-500"/> לוח המשימות</h2>
                  {shifts.length === 0 ? (
                    <div className="text-center py-24 premium-card border-2 border-dashed border-slate-100 opacity-60">
                       <Plane size={50} className="mx-auto text-slate-200 mb-4" />
-                      <p className="font-black text-slate-400">הלו"ז נקי, אמא בבית!</p>
+                      <p className="font-black text-slate-400">אמא בבית, הכל רגוע!</p>
                    </div>
                  ) : (
                    shifts.map(s => (
                      <div key={s.id} className="premium-card p-6 space-y-5 relative overflow-hidden">
                         <div className="flex justify-between items-center bg-rose-50 -mx-6 -mt-6 p-4 border-b border-rose-100/50">
-                           <div className="flex items-center gap-2">
-                              <Calendar size={18} className="text-rose-500" />
-                              <span className="font-black text-slate-800 text-sm">{formatHeDate(s.departureDate)} {s.isLayover ? `➔ ${formatHeDate(s.arrivalDate)}` : ''}</span>
-                           </div>
-                           <span className="text-[10px] font-black text-slate-400 bg-white px-2 py-1 rounded-lg border uppercase tracking-tighter">טיסה {s.flightNumber}</span>
+                           <div className="flex items-center gap-2"><Calendar size={18} className="text-rose-500" /><span className="font-black text-slate-800 text-sm tracking-tighter">{formatHeDate(s.departureDate)} ➔ {formatHeDate(s.arrivalDate)}</span></div>
+                           <span className="text-[10px] font-black text-slate-400 bg-white px-2 py-1 rounded-lg border uppercase tracking-tighter">{s.flightNumber}</span>
                         </div>
-
                         <div className="flex justify-between items-center text-center">
-                           <div className="flex-1">
-                              <p className="text-2xl font-black text-slate-800">{s.origin}</p>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">המראה {s.departureTime}</p>
-                           </div>
+                           <div className="flex-1 font-black text-slate-800">{s.origin}<p className="text-[9px] text-slate-400 font-bold uppercase mt-1">{s.departureTime}</p></div>
                            <div className="mx-4 opacity-20"><Plane size={20} className="rotate-180" /></div>
-                           <div className="flex-1">
-                              <p className="text-2xl font-black text-slate-800">{s.destination}</p>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">נחיתה {s.landingTime}</p>
-                           </div>
+                           <div className="flex-1 font-black text-slate-800">{s.destination}<p className="text-[9px] text-slate-400 font-bold uppercase mt-1">{s.landingTime}</p></div>
                         </div>
-
                         <div className="space-y-3 pt-2">
                            {tasks.filter(t => t.shiftId === s.id).sort((a,b) => (a.dateLabel + a.time).localeCompare(b.dateLabel + b.time)).map(t => (
                              <div key={t.id} className="bg-slate-50 p-4 rounded-[25px] flex items-center justify-between border border-slate-100">
                                 <div className="flex items-center gap-3">
-                                   <div className="bg-white p-2.5 rounded-xl shadow-sm">{getTaskIcon(t.description)}</div>
-                                   <div><p className="font-black text-slate-700 text-sm leading-none mb-1">{t.description}</p><p className="text-[10px] font-bold text-slate-400 uppercase">{formatHeDate(t.dateLabel)} • {t.time}</p></div>
+                                   <div className="bg-white p-2.5 rounded-xl shadow-sm"><Heart size={18} className="text-rose-500"/></div>
+                                   <div><p className="font-black text-slate-700 text-sm leading-none mb-1">{t.description}</p><p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{formatHeDate(t.dateLabel)} • {t.time}</p></div>
                                 </div>
                                 {t.assignedTo ? (
                                    <div className="flex items-center gap-2 bg-emerald-100/50 pr-1 pl-3 py-1 rounded-full border border-emerald-100">
@@ -429,7 +377,7 @@
                                       {t.assignedTo === currentUser.id && <button onClick={() => unclaimTask(t.id)} className="text-red-400 p-1"><X size={14}/></button>}
                                    </div>
                                 ) : (
-                                   <button onClick={() => claimTask(t.id)} className="bg-emerald-500 text-white px-5 py-2.5 rounded-2xl text-[11px] font-black shadow-lg shadow-emerald-100 active:scale-95 btn-action">אני אעזור!</button>
+                                   <button onClick={() => claimTask(t.id)} className="bg-emerald-500 text-white px-5 py-2.5 rounded-2xl text-[11px] font-black shadow-lg shadow-emerald-100 active:scale-95 transition-all">אני אבוא!</button>
                                 )}
                              </div>
                            ))}
@@ -443,19 +391,12 @@
             {activeTab === 'mine' && (
               <div className="space-y-5 animate-in">
                  <h2 className="text-2xl font-black text-slate-800 px-2 flex items-center gap-2"><CheckCircle size={28} className="text-emerald-500"/> המשימות שלי</h2>
-                 {tasks.filter(t => t.assignedTo === currentUser.id).length === 0 ? (
-                   <div className="text-center py-20 premium-card text-slate-300 font-bold italic">עוד לא בחרת משימות...</div>
-                 ) : (
-                   tasks.filter(t => t.assignedTo === currentUser.id).map(t => (
+                 {tasks.filter(t => t.assignedTo === currentUser.id).length === 0 ? <div className="text-center py-20 premium-card text-slate-300 font-bold italic">טרם בחרת משימות...</div> : tasks.filter(t => t.assignedTo === currentUser.id).map(t => (
                      <div key={t.id} className="premium-card p-6 border-r-[12px] border-emerald-500 flex justify-between items-center">
-                        <div>
-                           <p className="text-[10px] text-slate-400 font-black uppercase mb-1">{formatHeDate(t.dateLabel)} • {t.time}</p>
-                           <p className="text-lg font-black text-slate-800 leading-tight">{t.description}</p>
-                        </div>
+                        <div><p className="text-[10px] text-slate-400 font-black uppercase mb-1 tracking-tighter">{formatHeDate(t.dateLabel)} • {t.time}</p><p className="text-lg font-black text-slate-800 leading-tight">{t.description}</p></div>
                         <button onClick={() => unclaimTask(t.id)} className="bg-red-50 p-4 rounded-2xl text-red-300 hover:text-red-500 transition-all"><Trash2 size={22}/></button>
                      </div>
-                   ))
-                 )}
+                   ))}
               </div>
             )}
 
@@ -463,29 +404,17 @@
               <div className="space-y-6 animate-in pb-12">
                 {adminView === 'dashboard' && (
                   <div className="space-y-6">
-                    <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2"><Settings className="text-indigo-500" /> Back-Office</h2>
+                    <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2 px-2"><Settings className="text-indigo-500" /> ניהול משפחתי</h2>
                     <div className="grid grid-cols-2 gap-4">
-                       <button onClick={() => setAdminView('flights')} className="premium-card p-6 flex flex-col items-center gap-3 active:scale-95 transition-all">
-                          <div className="bg-indigo-50 p-4 rounded-2xl text-indigo-500"><Plane size={32}/></div>
-                          <span className="font-black text-xs">ניהול טיסות</span>
-                       </button>
-                       <button onClick={() => setAdminView('users')} className="premium-card p-6 flex flex-col items-center gap-3 active:scale-95 transition-all">
-                          <div className="bg-emerald-50 p-4 rounded-2xl text-emerald-500"><Users size={32}/></div>
-                          <span className="font-black text-xs">משתמשים</span>
-                       </button>
+                       <button onClick={() => setAdminView('flights')} className="premium-card p-6 flex flex-col items-center gap-3 active:scale-95 transition-all"><div className="bg-indigo-50 p-4 rounded-2xl text-indigo-500"><Plane size={32}/></div><span className="font-black text-xs">טיסות</span></button>
+                       <button onClick={() => setAdminView('users')} className="premium-card p-6 flex flex-col items-center gap-3 active:scale-95 transition-all"><div className="bg-emerald-50 p-4 rounded-2xl text-emerald-500"><Users size={32}/></div><span className="font-black text-xs">משתמשים</span></button>
                     </div>
                     <div className="premium-card p-7 space-y-4">
                        <button onClick={handleSmartImport} disabled={isSyncing} className="w-full bg-slate-900 text-white p-5 rounded-[22px] flex items-center justify-center gap-3 font-black text-sm shadow-xl active:scale-95">
-                          {isSyncing ? <div className="loader"></div> : <Sparkles size={20} className="text-rose-400" />}
-                          ייבוא חכם (Draft & Verify)
+                          {isSyncing ? <div className="loader"></div> : <Sparkles size={20} className="text-rose-400" />} ייבוא חכם (Draft)
                        </button>
-                       <button onClick={() => { 
-                         const sId = `s-man-${Date.now()}`;
-                         setEditingShift({ id: sId, flightNumber: '', origin: 'TLV', destination: '', departureDate: '', arrivalDate: '', pickupTime: '10:00', departureTime: '13:00', landingTime: '21:00', returnHomeTime: '22:00', isLayover: false });
-                         setEditingTasks([]);
-                         setAdminView('edit_flight');
-                       }} className="w-full bg-indigo-500 text-white p-5 rounded-[22px] flex items-center justify-center gap-3 font-black text-sm shadow-xl active:scale-95">
-                          <Plus size={20} /> הוספת טיסה ידנית
+                       <button onClick={() => { setEditingShift({ id: `s-man-${Date.now()}`, flightNumber: '', origin: 'TLV', destination: '', departureDate: '', arrivalDate: '', pickupTime: '10:00', departureTime: '13:00', landingTime: '21:00', returnHomeTime: '22:00', isLayover: false }); setEditingTasks([]); setAdminView('edit_flight'); }} className="w-full bg-indigo-500 text-white p-5 rounded-[22px] flex items-center justify-center gap-3 font-black text-sm shadow-xl active:scale-95">
+                          <Plus size={20} /> טיסה ידנית
                        </button>
                     </div>
                   </div>
@@ -495,96 +424,60 @@
                   <div className="space-y-6 animate-in">
                     <button onClick={() => setAdminView('dashboard')} className="flex items-center gap-2 text-slate-400 font-bold px-2"><ChevronLeft size={20} /> חזרה</button>
                     {shifts.map(s => (
-                      <div key={s.id} className="premium-card p-5 border-r-[10px] border-indigo-500 flex justify-between items-center group">
-                         <div>
-                            <p className="font-black text-slate-800 text-lg leading-tight mb-1">{s.flightNumber} ➔ {s.destination}</p>
-                            <p className="text-[10px] text-slate-400 font-black uppercase tracking-tighter">{formatHeDate(s.departureDate)}</p>
-                         </div>
+                      <div key={s.id} className="premium-card p-5 border-r-[10px] border-indigo-500 flex justify-between items-center">
+                         <div><p className="font-black text-slate-800 leading-tight mb-1">{s.flightNumber} ➔ {s.destination}</p><p className="text-[10px] text-slate-400 font-black tracking-tighter uppercase">{formatHeDate(s.departureDate)}</p></div>
                          <div className="flex gap-2">
-                            <button onClick={() => startEditFlight(s)} className="p-3 bg-indigo-50 text-indigo-500 rounded-2xl"><Edit2 size={20}/></button>
-                            <button onClick={() => { if(confirm('למחוק?')) { setShifts(shifts.filter(x => x.id !== s.id)); setTasks(tasks.filter(t => t.shiftId !== s.id)); } }} className="p-3 bg-red-50 text-red-300 rounded-2xl"><Trash2 size={20}/></button>
+                            <button onClick={() => { setEditingShift({...s}); setEditingTasks(tasks.filter(t => t.shiftId === s.id)); setAdminView('edit_flight'); }} className="p-3 bg-indigo-50 text-indigo-500 rounded-2xl"><Edit2 size={20}/></button>
+                            <button onClick={() => { if(confirm('למחוק טיסה?')) { setShifts(shifts.filter(x => x.id !== s.id)); setTasks(tasks.filter(t => t.shiftId !== s.id)); } }} className="p-3 bg-red-50 text-red-300 rounded-2xl"><Trash2 size={20}/></button>
                          </div>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {adminView === 'edit_flight' && editingShift && (
-                  <div className="space-y-6 animate-in pb-12">
-                    <div className="flex items-center justify-between px-2">
-                       <button onClick={() => setAdminView('dashboard')} className="flex items-center gap-2 text-slate-400 font-bold"><ChevronLeft size={20} /> ביטול</button>
-                       <button onClick={saveFullFlight} className="bg-emerald-500 text-white px-6 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2"><Save size={18}/> שמור הכל</button>
-                    </div>
-
-                    <div className="premium-card p-7 space-y-6">
-                       <div className="border-b border-slate-50 pb-4">
-                          <h3 className="font-black text-slate-800 text-xl flex items-center gap-2"><Plane size={24} className="text-rose-500"/> לו"ז אמא</h3>
+                {adminView['edit_flight'] || (adminView === 'edit_flight' && editingShift && (
+                  <div className="space-y-6 animate-in pb-12 px-2">
+                    <div className="flex items-center justify-between"><button onClick={() => setAdminView('dashboard')} className="text-slate-400 font-bold tracking-tighter flex items-center gap-2"><ChevronLeft size={20} /> ביטול</button><button onClick={saveFullFlightHandler} className="bg-emerald-500 text-white px-6 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2"><Save size={18}/> שמור בענן</button></div>
+                    <div className="premium-card p-7 space-y-4">
+                       <h3 className="font-black text-slate-800 text-xl border-b pb-3 mb-4 tracking-tighter">נתוני טיסת אמא</h3>
+                       <div className="grid grid-cols-2 gap-3">
+                          <input value={editingShift.flightNumber} onChange={e => setEditingShift({...editingShift, flightNumber: e.target.value})} placeholder="מס' טיסה" />
+                          <input value={editingShift.destination} onChange={e => setEditingShift({...editingShift, destination: e.target.value})} placeholder="יעד" />
                        </div>
-                       <div className="space-y-4">
-                          <div className="grid grid-cols-2 gap-3">
-                             <div><label className="text-[10px] font-black text-slate-400 uppercase mr-1">מס' טיסה</label><input value={editingShift.flightNumber} onChange={e => setEditingShift({...editingShift, flightNumber: e.target.value})} /></div>
-                             <div><label className="text-[10px] font-black text-slate-400 uppercase mr-1">יעד</label><input value={editingShift.destination} onChange={e => setEditingShift({...editingShift, destination: e.target.value})} /></div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                             <div><label className="text-[10px] font-black text-slate-400 uppercase mr-1">תאריך יציאה</label><input type="date" value={editingShift.departureDate} onChange={e => { const d = e.target.value; setEditingShift({...editingShift, departureDate: d, isLayover: d !== editingShift.arrivalDate}); }} /></div>
-                             <div><label className="text-[10px] font-black text-slate-400 uppercase mr-1">תאריך חזרה</label><input type="date" value={editingShift.arrivalDate} onChange={e => { const d = e.target.value; setEditingShift({...editingShift, arrivalDate: d, isLayover: d !== editingShift.departureDate}); }} /></div>
-                          </div>
-                          <div className="bg-rose-50/50 p-5 rounded-3xl grid grid-cols-2 gap-4">
-                             <div><label className="text-[10px] font-black text-rose-400 uppercase">יציאה (הסעה)</label><input type="time" value={editingShift.pickupTime} onChange={e => setEditingShift({...editingShift, pickupTime: e.target.value})} /></div>
-                             <div><label className="text-[10px] font-black text-rose-400 uppercase">המראה</label><input type="time" value={editingShift.departureTime} onChange={e => setEditingShift({...editingShift, departureTime: e.target.value})} /></div>
-                             <div><label className="text-[10px] font-black text-rose-400 uppercase">נחיתה</label><input type="time" value={editingShift.landingTime} onChange={e => setEditingShift({...editingShift, landingTime: e.target.value})} /></div>
-                             <div><label className="text-[10px] font-black text-rose-400 uppercase">חזרה הביתה</label><input type="time" value={editingShift.returnHomeTime} onChange={e => setEditingShift({...editingShift, returnHomeTime: e.target.value})} /></div>
-                          </div>
+                       <div className="grid grid-cols-2 gap-3">
+                          <input type="date" value={editingShift.departureDate} onChange={e => setEditingShift({...editingShift, departureDate: e.target.value})} />
+                          <input type="date" value={editingShift.arrivalDate} onChange={e => setEditingShift({...editingShift, arrivalDate: e.target.value})} />
+                       </div>
+                       <div className="bg-slate-50 p-4 rounded-3xl grid grid-cols-2 gap-3 border border-slate-100">
+                          <div><label className="text-[9px] font-bold text-slate-400 uppercase">זמן יציאה מהבית</label><input type="time" value={editingShift.pickupTime} onChange={e => setEditingShift({...editingShift, pickupTime: e.target.value})} /></div>
+                          <div><label className="text-[9px] font-bold text-slate-400 uppercase">שעת המראה</label><input type="time" value={editingShift.departureTime} onChange={e => setEditingShift({...editingShift, departureTime: e.target.value})} /></div>
+                          <div><label className="text-[9px] font-bold text-slate-400 uppercase">שעת נחיתה</label><input type="time" value={editingShift.landingTime} onChange={e => setEditingShift({...editingShift, landingTime: e.target.value})} /></div>
+                          <div><label className="text-[9px] font-bold text-slate-400 uppercase">שעת חזרה משוערת</label><input type="time" value={editingShift.returnHomeTime} onChange={e => setEditingShift({...editingShift, returnHomeTime: e.target.value})} /></div>
                        </div>
                     </div>
-
-                    <div className="premium-card p-7 space-y-6">
-                       <div className="flex justify-between items-center border-b border-slate-50 pb-4">
-                          <h3 className="font-black text-slate-800 text-xl flex items-center gap-2 text-indigo-600"><Heart size={24} className="fill-indigo-500"/> לו"ז עלמא</h3>
-                          <div className="flex gap-2">
-                             <button onClick={generateDefaultTasksForEditing} className="bg-indigo-50 text-indigo-500 p-2.5 rounded-xl font-black text-[10px] uppercase border border-indigo-100" title="צור משימות סטנדרטיות">ייצר ברירת מחדל</button>
-                             <button onClick={() => setEditingTasks([...editingTasks, { id: `t-new-${Date.now()}`, shiftId: editingShift.id, description: 'משימה חדשה', time: '16:00', dateLabel: editingShift.departureDate, assignedTo: null }])} className="bg-rose-100 text-rose-500 p-2.5 rounded-xl hover:bg-rose-200"><Plus size={20}/></button>
-                          </div>
-                       </div>
-                       <div className="space-y-4">
-                          {editingTasks.sort((a,b) => (a.dateLabel + a.time).localeCompare(b.dateLabel + b.time)).map((t, idx) => (
-                             <div key={t.id} className="bg-slate-50 p-4 rounded-3xl space-y-3 border border-slate-100 relative">
-                                <button onClick={() => setEditingTasks(editingTasks.filter(x => x.id !== t.id))} className="absolute top-2 left-2 text-red-200"><Trash size={16}/></button>
-                                <div className="grid grid-cols-2 gap-3">
-                                   <div className="col-span-2"><label className="text-[10px] font-black text-slate-400 uppercase">משימה</label><input value={t.description} onChange={e => setEditingTasks(editingTasks.map(x => x.id === t.id ? {...x, description: e.target.value} : x))} /></div>
-                                   <div><label className="text-[10px] font-black text-slate-400 uppercase">תאריך</label><input type="date" value={t.dateLabel} onChange={e => setEditingTasks(editingTasks.map(x => x.id === t.id ? {...x, dateLabel: e.target.value} : x))} /></div>
-                                   <div><label className="text-[10px] font-black text-slate-400 uppercase">שעה</label><input type="time" value={t.time} onChange={e => setEditingTasks(editingTasks.map(x => x.id === t.id ? {...x, time: e.target.value} : x))} /></div>
-                                </div>
+                    <div className="premium-card p-7 space-y-4">
+                       <div className="flex justify-between items-center border-b pb-3 mb-4"><h3 className="font-black text-indigo-600 text-xl tracking-tighter">משימות עזרה לעלמא</h3><button onClick={generateDefaultTasksForEditing} className="text-[9px] bg-indigo-50 px-2 py-1 rounded font-black uppercase text-indigo-400 border">ייצר ברירת מחדל</button></div>
+                       <div className="space-y-3">
+                          {editingTasks.map(t => (
+                             <div key={t.id} className="bg-slate-50 p-3 rounded-2xl space-y-2 border relative">
+                                <button onClick={() => setEditingTasks(editingTasks.filter(x => x.id !== t.id))} className="absolute top-1 left-1 text-red-200"><Trash size={14}/></button>
+                                <input value={t.description} onChange={e => setEditingTasks(editingTasks.map(x => x.id === t.id ? {...x, description: e.target.value} : x))} className="text-sm font-bold h-10" />
+                                <div className="grid grid-cols-2 gap-2"><input type="date" value={t.dateLabel} onChange={e => setEditingTasks(editingTasks.map(x => x.id === t.id ? {...x, dateLabel: e.target.value} : x))} className="h-10 text-xs" /><input type="time" value={t.time} onChange={e => setEditingTasks(editingTasks.map(x => x.id === t.id ? {...x, time: e.target.value} : x))} className="h-10 text-xs" /></div>
                              </div>
                           ))}
+                          <button onClick={() => setEditingTasks([...editingTasks, { id: `t-new-${Date.now()}`, shiftId: editingShift.id, description: 'משימה חדשה', time: '16:00', dateLabel: editingShift.departureDate, assignedTo: null }])} className="w-full p-3 border-2 border-dashed rounded-2xl text-slate-300 font-black">+ הוסף משימה ידנית</button>
                        </div>
                     </div>
                   </div>
-                )}
+                ))}
 
                 {adminView === 'draft_verify' && drafts && (
                   <div className="space-y-6 animate-in">
-                    <div className="bg-amber-50 p-5 rounded-3xl border border-amber-200 flex items-center gap-4">
-                       <AlertTriangle className="text-amber-500 flex-none" size={32} />
-                       <p className="text-xs font-bold text-amber-800 leading-relaxed">המערכת יצרה אוטומטית 4 משימות "סטנדרט עלמא" לכל יום. נא לוודא לפני האישור.</p>
-                    </div>
+                    <div className="bg-amber-50 p-5 rounded-3xl border border-amber-200 text-xs font-bold text-amber-800">אישור סופי של הטיסות והמשימות:</div>
                     {drafts.map((d, i) => (
-                       <div key={i} className="premium-card p-6 space-y-4 border-2 border-indigo-200">
-                          <h4 className="font-black text-indigo-600">טיסת {d.flightNumber} ל{d.destination} ({d.departureDate})</h4>
-                          <div className="bg-slate-50 p-4 rounded-2xl space-y-2 border border-slate-100 shadow-inner max-h-60 overflow-y-auto no-scrollbar">
-                             {d.suggestedTasks.map((st, si) => (
-                               <div key={si} className="flex justify-between items-center text-[10px] font-bold py-1 border-b border-white last:border-0">
-                                  <span className="text-slate-700">{st.description}</span>
-                                  <span className="text-slate-400">{formatHeDate(st.date)} • {st.time}</span>
-                               </div>
-                             ))}
-                          </div>
-                       </div>
+                       <div key={i} className="premium-card p-6 border-2 border-indigo-200"><h4 className="font-black text-indigo-600 mb-3">{d.flightNumber} ל{d.destination}</h4><div className="space-y-1">{d.suggestedTasks.map((st, si) => <div key={si} className="text-[10px] text-slate-500 border-b last:border-0 py-1">{st.description} - {st.date}</div>)}</div></div>
                     ))}
-                    <div className="flex gap-3">
-                       <button onClick={finalizeImport} className="flex-1 bg-emerald-500 text-white p-5 rounded-[22px] font-black shadow-xl"><Check size={20} className="inline ml-1"/> אישור והוספה</button>
-                       <button onClick={() => { setDrafts(null); setAdminView('dashboard'); }} className="bg-slate-100 text-slate-500 p-5 rounded-[22px] font-black px-8">ביטול</button>
-                    </div>
+                    <div className="flex gap-3"><button onClick={finalizeImport} className="flex-1 bg-emerald-500 text-white p-5 rounded-[22px] font-black shadow-xl">אישור והעלאה לענן</button><button onClick={() => setAdminView('dashboard')} className="bg-slate-100 text-slate-500 p-5 rounded-[22px] font-black">ביטול</button></div>
                   </div>
                 )}
               </div>

@@ -1,2 +1,1 @@
-
-// הקוד עבר ל-index.html לצורך תאימות מלאה ופתרון בעיות טעינה
+// Logic moved to index.html for stability

@@ -1,6 +1,7 @@
 
 const CACHE_NAME = 'alma-care-v1';
-const urlsToCache = ['/', '/index.html', '/manifest.json'];
+// שינוי לנתיבים יחסיים כדי שזה יעבוד גם בתוך תיקייה בגיטהאב
+const urlsToCache = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', event => {
   event.waitUntil(

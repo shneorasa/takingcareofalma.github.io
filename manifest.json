@@ -3,7 +3,7 @@
   "name": "דואגים לעלמא",
   "short_name": "עלמא",
   "description": "תיאום טיפול משפחתי בעלמא בזמן הטיסות של אמא",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#f43f5e",
   "theme_color": "#f43f5e",

@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
@@ -62,7 +61,7 @@
     import { GoogleGenAI, Type } from "@google/genai";
 
     const FAMILY_KEY = "ALMA2024";
-    const API_URL = "https://script.google.com/macros/s/AKfycbyzYEtv8Iim4XmvmMYaC1hcqrFh99tMtKh67r7uLWx737gB6A8Ht6tvDpGYs5b9wL9M/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbzGZ8j7ZumQUBT6XRfg7qKNO7hg8B9xSnYKd8zQQLJBQHKVc7K0zQgy6LASQ8EjFNzT/exec";
 
     const DEFAULT_ALMA_TASKS = [
       { description: 'איסוף מהגן', time: '16:30' },
@@ -99,17 +98,45 @@
           const response = await fetch(API_URL);
           if (!response.ok) throw new Error("Fetch failed");
           const cloudData = await response.json();
+          
           if (cloudData) {
-            if (cloudData.shifts) setShifts(cloudData.shifts);
-            if (cloudData.tasks) setTasks(cloudData.tasks);
-            if (cloudData.members) setMembers(cloudData.members);
+            // Flights Mapping: [id, flightNumber, origin, destination, departureDate, arrivalDate, pickupTime, departureTime, landingTime, returnHomeTime, isLayover]
+            const flightRows = cloudData.flights || [];
+            if (flightRows.length > 0) {
+              const dataRows = flightRows[0][0] === "id" ? flightRows.slice(1) : flightRows;
+              const mappedShifts = dataRows.map(row => ({
+                id: String(row[0] || ''),
+                flightNumber: String(row[1] || ''),
+                origin: String(row[2] || ''),
+                destination: String(row[3] || ''),
+                departureDate: String(row[4] || ''),
+                arrivalDate: String(row[5] || ''),
+                pickupTime: String(row[6] || ''),
+                departureTime: String(row[7] || ''),
+                landingTime: String(row[8] || ''),
+                returnHomeTime: String(row[9] || ''),
+                isLayover: row[10] === true || row[10] === "TRUE" || row[10] === 1
+              }));
+              setShifts(mappedShifts);
+            }
+
+            // Tasks Mapping: [id, flightId, description, time, dateLabel, assignedTo]
+            const taskRows = cloudData.tasks || [];
+            if (taskRows.length > 0) {
+              const dataRows = taskRows[0][0] === "id" ? taskRows.slice(1) : taskRows;
+              const mappedTasks = dataRows.map(row => ({
+                id: String(row[0] || ''),
+                shiftId: String(row[1] || ''),
+                description: String(row[2] || ''),
+                time: String(row[3] || ''),
+                dateLabel: String(row[4] || ''),
+                assignedTo: row[5] ? String(row[5]) : null
+              }));
+              setTasks(mappedTasks);
+            }
           }
         } catch (err) {
           console.error("Load Data Error:", err);
-          const s = localStorage.getItem('family_alma_v9');
-          const t = localStorage.getItem('tasks_alma_v9');
-          if (s) setShifts(JSON.parse(s));
-          if (t) setTasks(JSON.parse(t));
         } finally {
           setIsCloudLoading(false);
           setIsSyncing(false);
@@ -130,8 +157,8 @@
             }),
             headers: { 'Content-Type': 'text/plain' }
           });
-          console.log("Save to Google Sheets sent (no-cors mode)");
-          alert("הנתונים נשלחו לסנכרון מול הענן המשפחתי");
+          alert("הנתונים נשמרו בהצלחה בענן המשפחתי");
+          loadData(); 
         } catch (err) {
           console.error("Save Flight Error:", err);
           alert("שגיאה בסנכרון לענן");
@@ -163,8 +190,13 @@
 
       const formatHeDate = (isoDate) => {
         if (!isoDate) return "";
-        const d = new Date(isoDate);
-        return d.toLocaleDateString('he-IL', { weekday: 'short', day: 'numeric', month: 'numeric' });
+        try {
+          const d = new Date(isoDate);
+          if (isNaN(d.getTime())) return isoDate;
+          return d.toLocaleDateString('he-IL', { weekday: 'short', day: 'numeric', month: 'numeric' });
+        } catch(e) {
+          return isoDate;
+        }
       };
 
       const handleLogin = (member) => {
@@ -208,7 +240,7 @@
       const finalizeImport = () => {
         drafts.forEach((d, idx) => {
           const sId = `s-${Date.now()}-${idx}`;
-          const currentFlightData = { ...d, id: sId };
+          const currentFlightData = { ...d, id: sId, isLayover: false };
           const currentTasksData = d.suggestedTasks.map((t, tIdx) => ({
             id: `t-${sId}-${tIdx}`,
             shiftId: sId,
@@ -217,9 +249,6 @@
             dateLabel: t.date,
             assignedTo: null
           }));
-          
-          setShifts(prev => [...prev, currentFlightData]);
-          setTasks(prev => [...prev, ...currentTasksData]);
           saveFlight(currentFlightData, currentTasksData);
         });
         setDrafts(null);
@@ -227,12 +256,6 @@
       };
 
       const saveFullFlightHandler = () => {
-        const updatedShifts = shifts.some(s => s.id === editingShift.id) ? shifts.map(s => s.id === editingShift.id ? editingShift : s) : [...shifts, editingShift];
-        const otherTasks = tasks.filter(t => t.shiftId !== editingShift.id);
-        const finalTasks = [...otherTasks, ...editingTasks];
-        
-        setShifts(updatedShifts);
-        setTasks(finalTasks);
         saveFlight(editingShift, editingTasks);
         setAdminView('dashboard');
       };
@@ -249,7 +272,6 @@
       const claimTask = (tid) => {
         const updatedTasks = tasks.map(t => t.id === tid ? { ...t, assignedTo: currentUser.id } : t);
         setTasks(updatedTasks);
-        // Sync full state for task claim
         fetch(API_URL, {
           method: 'POST',
           mode: 'no-cors',
@@ -276,7 +298,7 @@
                  <div className="bg-white/20 p-2.5 rounded-2xl shadow-inner"><Heart size={26} className="fill-white" /></div>
                  <div>
                     <h1 className="text-xl font-black tracking-tight leading-none">דואגים לעלמא</h1>
-                    <p className="text-[9px] font-bold opacity-70 mt-1 uppercase tracking-tighter">Google Sheet Storage</p>
+                    <p className="text-[9px] font-bold opacity-70 mt-1 uppercase tracking-tighter">Shared Family Cloud</p>
                  </div>
               </div>
               <div className="flex items-center gap-2">
@@ -335,7 +357,7 @@
         return (
           <div className="flex flex-col h-screen items-center justify-center bg-slate-50 gap-4">
              <div className="loader w-12 h-12"></div>
-             <p className="font-black text-rose-500 animate-pulse uppercase tracking-tighter">טוען מהענן המשותף...</p>
+             <p className="font-black text-rose-500 animate-pulse uppercase tracking-tighter">מסנכרן נתונים מהענן...</p>
           </div>
         );
       }
@@ -346,7 +368,7 @@
           <main className="flex-1 overflow-y-auto p-4 space-y-6 pb-32 no-scrollbar">
             {activeTab === 'open' && (
               <div className="space-y-6 animate-in">
-                 <h2 className="text-xl font-black text-slate-800 flex items-center gap-2 px-2"><MapPin size={22} className="text-rose-500"/> לוח המשימות</h2>
+                 <h2 className="text-xl font-black text-slate-800 flex items-center gap-2 px-2"><MapPin size={22} className="text-rose-500"/> לוח המשימות המשותף</h2>
                  {shifts.length === 0 ? (
                    <div className="text-center py-24 premium-card border-2 border-dashed border-slate-100 opacity-60">
                       <Plane size={50} className="mx-auto text-slate-200 mb-4" />
@@ -360,9 +382,9 @@
                            <span className="text-[10px] font-black text-slate-400 bg-white px-2 py-1 rounded-lg border uppercase tracking-tighter">{s.flightNumber}</span>
                         </div>
                         <div className="flex justify-between items-center text-center">
-                           <div className="flex-1 font-black text-slate-800">{s.origin}<p className="text-[9px] text-slate-400 font-bold uppercase mt-1">{s.departureTime}</p></div>
+                           <div className="flex-1 font-black text-slate-800">{s.origin}<p className="text-[9px] text-slate-400 font-bold uppercase mt-1">המראה: {s.departureTime}</p></div>
                            <div className="mx-4 opacity-20"><Plane size={20} className="rotate-180" /></div>
-                           <div className="flex-1 font-black text-slate-800">{s.destination}<p className="text-[9px] text-slate-400 font-bold uppercase mt-1">{s.landingTime}</p></div>
+                           <div className="flex-1 font-black text-slate-800">{s.destination}<p className="text-[9px] text-slate-400 font-bold uppercase mt-1">נחיתה: {s.landingTime}</p></div>
                         </div>
                         <div className="space-y-3 pt-2">
                            {tasks.filter(t => t.shiftId === s.id).sort((a,b) => (a.dateLabel + a.time).localeCompare(b.dateLabel + b.time)).map(t => (
@@ -400,7 +422,7 @@
               </div>
             )}
 
-            {activeTab === 'admin' && (
+            {activeTab === 'admin' && currentUser?.isAdmin && (
               <div className="space-y-6 animate-in pb-12">
                 {adminView === 'dashboard' && (
                   <div className="space-y-6">
@@ -411,7 +433,7 @@
                     </div>
                     <div className="premium-card p-7 space-y-4">
                        <button onClick={handleSmartImport} disabled={isSyncing} className="w-full bg-slate-900 text-white p-5 rounded-[22px] flex items-center justify-center gap-3 font-black text-sm shadow-xl active:scale-95">
-                          {isSyncing ? <div className="loader"></div> : <Sparkles size={20} className="text-rose-400" />} ייבוא חכם (Draft)
+                          {isSyncing ? <div className="loader"></div> : <Sparkles size={20} className="text-rose-400" />} ייבוא חכם (Gemini)
                        </button>
                        <button onClick={() => { setEditingShift({ id: `s-man-${Date.now()}`, flightNumber: '', origin: 'TLV', destination: '', departureDate: '', arrivalDate: '', pickupTime: '10:00', departureTime: '13:00', landingTime: '21:00', returnHomeTime: '22:00', isLayover: false }); setEditingTasks([]); setAdminView('edit_flight'); }} className="w-full bg-indigo-500 text-white p-5 rounded-[22px] flex items-center justify-center gap-3 font-black text-sm shadow-xl active:scale-95">
                           <Plus size={20} /> טיסה ידנית
@@ -428,14 +450,18 @@
                          <div><p className="font-black text-slate-800 leading-tight mb-1">{s.flightNumber} ➔ {s.destination}</p><p className="text-[10px] text-slate-400 font-black tracking-tighter uppercase">{formatHeDate(s.departureDate)}</p></div>
                          <div className="flex gap-2">
                             <button onClick={() => { setEditingShift({...s}); setEditingTasks(tasks.filter(t => t.shiftId === s.id)); setAdminView('edit_flight'); }} className="p-3 bg-indigo-50 text-indigo-500 rounded-2xl"><Edit2 size={20}/></button>
-                            <button onClick={() => { if(confirm('למחוק טיסה?')) { setShifts(shifts.filter(x => x.id !== s.id)); setTasks(tasks.filter(t => t.shiftId !== s.id)); } }} className="p-3 bg-red-50 text-red-300 rounded-2xl"><Trash2 size={20}/></button>
+                            <button onClick={() => { if(confirm('למחוק טיסה?')) { 
+                              fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: "deleteFlight", flightId: s.id }) });
+                              setShifts(shifts.filter(x => x.id !== s.id)); 
+                              setTasks(tasks.filter(t => t.shiftId !== s.id));
+                            } }} className="p-3 bg-red-50 text-red-300 rounded-2xl"><Trash2 size={20}/></button>
                          </div>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {adminView['edit_flight'] || (adminView === 'edit_flight' && editingShift && (
+                {adminView === 'edit_flight' && editingShift && (
                   <div className="space-y-6 animate-in pb-12 px-2">
                     <div className="flex items-center justify-between"><button onClick={() => setAdminView('dashboard')} className="text-slate-400 font-bold tracking-tighter flex items-center gap-2"><ChevronLeft size={20} /> ביטול</button><button onClick={saveFullFlightHandler} className="bg-emerald-500 text-white px-6 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2"><Save size={18}/> שמור בענן</button></div>
                     <div className="premium-card p-7 space-y-4">
@@ -469,7 +495,7 @@
                        </div>
                     </div>
                   </div>
-                ))}
+                )}
 
                 {adminView === 'draft_verify' && drafts && (
                   <div className="space-y-6 animate-in">

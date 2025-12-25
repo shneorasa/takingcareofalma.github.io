@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="./manifest.json">
-  <title>דואגים לעלמא - משפחה בטוחה</title>
+  <title>דואגים לעלמא - Back Office</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700;800&display=swap" rel="stylesheet">
@@ -24,18 +24,16 @@
       overflow-x: hidden;
     }
     #root { min-height: 100vh; }
-    .animate-in { animation: fadeIn 0.5s cubic-bezier(0, 0, 0.2, 1); }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-    .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.3); }
-    .premium-card { background: white; border-radius: 35px; box-shadow: 0 10px 40px -10px rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.02); }
-    .btn-primary { background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%); transition: all 0.2s; color: white; font-weight: 800; }
-    .btn-primary:active { transform: scale(0.96); opacity: 0.9; }
-    input, textarea { border-radius: 18px !important; outline: none !important; border: 1px solid #e2e8f0; padding: 14px; width: 100%; transition: all 0.2s; }
-    input:focus { border-color: #f43f5e; box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.1); }
+    .animate-in { animation: fadeIn 0.4s cubic-bezier(0, 0, 0.2, 1); }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+    .glass { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+    .premium-card { background: white; border-radius: 30px; box-shadow: 0 4px 20px -5px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.03); }
+    input, textarea, select { border-radius: 12px !important; outline: none !important; border: 1px solid #e2e8f0; padding: 10px; width: 100%; font-size: 14px; }
+    input:focus { border-color: #f43f5e; ring: 2px ring-rose-100; }
     .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
-    ::-webkit-scrollbar { display: none; }
-    .loader-ring { width: 48px; height: 48px; border: 5px solid #FFF; border-bottom-color: transparent; border-radius: 50%; display: inline-block; box-sizing: border-box; animation: rotation 1s linear infinite; }
-    @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .loader { border: 4px solid #f3f3f3; border-top: 4px solid #f43f5e; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
   </style>
 
   <script type="importmap">
@@ -55,84 +53,87 @@
   <div id="root"></div>
 
   <script type="text/babel" data-type="module">
-    import React, { useState, useEffect } from 'react';
+    import React, { useState, useEffect, useMemo } from 'react';
     import ReactDOM from 'react-dom/client';
-    import { Plane, Heart, Clock, Calendar, CheckCircle, RefreshCw, Car, Utensils, Moon, Settings, Trash2, Plus, Edit2, X, Save, LogIn, Shield, Key, AlertCircle, Copy, Check, Sparkles } from 'lucide-react';
+    import { Plane, Heart, Clock, Calendar, CheckCircle, RefreshCw, Car, Utensils, Moon, Settings, Trash2, Plus, Edit2, X, Save, LogIn, Shield, Key, AlertTriangle, Users, ChevronLeft, MapPin, Sparkles, UserPlus } from 'lucide-react';
     import { GoogleGenAI, Type } from "@google/genai";
 
-    const FAMILY_KEY = "ALMA2024"; 
-    const MEMBERS = [
-      { id: 'm1', name: 'אמא', role: 'אמא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mom', isAdmin: true },
-      { id: 'f1', name: 'אבא', role: 'אבא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dad', isAdmin: true },
-      { id: 'g1', name: 'סבתא', role: 'סבתא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Grandma', isAdmin: false },
-      { id: 'g2', name: 'סבא', role: 'סבא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Grandpa', isAdmin: false },
-    ];
+    const FAMILY_KEY = "ALMA2024";
 
     const App = () => {
       const [isAuthorized, setIsAuthorized] = useState(false);
       const [currentUser, setCurrentUser] = useState(null);
+      const [members, setMembers] = useState([
+        { id: 'm1', name: 'אמא', role: 'אמא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mom', isAdmin: true, email: 'mom@gmail.com' },
+        { id: 'f1', name: 'אבא', role: 'אבא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dad', isAdmin: true, email: 'dad@gmail.com' },
+        { id: 'g1', name: 'סבתא', role: 'סבתא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Grandma', isAdmin: false, email: 'grandma@gmail.com' },
+      ]);
       const [shifts, setShifts] = useState([]);
       const [tasks, setTasks] = useState([]);
-      const [activeTab, setActiveTab] = useState('open');
+      const [activeTab, setActiveTab] = useState('open'); // open, mine, admin
       const [isSyncing, setIsSyncing] = useState(false);
+      
+      // Admin View States
+      const [adminView, setAdminView] = useState('dashboard'); // dashboard, users, flights, manual_entry, draft_verify
+      const [importDraft, setImportDraft] = useState(null);
+      const [editingShift, setEditingShift] = useState(null);
+      
       const [keyInput, setKeyInput] = useState("");
-      const [error, setError] = useState("");
+      const [authError, setAuthError] = useState("");
 
-      const [editingShiftId, setEditingShiftId] = useState(null);
-      const [editingTaskId, setEditingTaskId] = useState(null);
-      const [editForm, setEditForm] = useState({});
-
+      // --- Persistence ---
       useEffect(() => {
-        const savedSession = localStorage.getItem('alma_session_v6');
-        const savedData = localStorage.getItem('alma_data_v6');
-        if (savedSession) {
-          const session = JSON.parse(savedSession);
+        const session = localStorage.getItem('alma_session_v7');
+        const data = localStorage.getItem('alma_data_v7');
+        const storedMembers = localStorage.getItem('alma_members_v7');
+        
+        if (session) {
           setIsAuthorized(true);
-          setCurrentUser(session);
+          setCurrentUser(JSON.parse(session));
         }
-        if (savedData) {
-          const data = JSON.parse(savedData);
-          setShifts(data.shifts || []);
-          setTasks(data.tasks || []);
+        if (data) {
+          const parsed = JSON.parse(data);
+          setShifts(parsed.shifts || []);
+          setTasks(parsed.tasks || []);
+        }
+        if (storedMembers) {
+          setMembers(JSON.parse(storedMembers));
         }
       }, []);
 
       useEffect(() => {
         if (isAuthorized) {
-          localStorage.setItem('alma_data_v6', JSON.stringify({ shifts, tasks }));
+          localStorage.setItem('alma_data_v7', JSON.stringify({ shifts, tasks }));
+          localStorage.setItem('alma_members_v7', JSON.stringify(members));
         }
-      }, [shifts, tasks, isAuthorized]);
+      }, [shifts, tasks, members, isAuthorized]);
 
-      const handleAuth = (member) => {
+      // --- Auth ---
+      const handleLogin = (member) => {
         if (keyInput.toUpperCase() === FAMILY_KEY) {
           setCurrentUser(member);
           setIsAuthorized(true);
-          localStorage.setItem('alma_session_v6', JSON.stringify(member));
-          setError("");
+          localStorage.setItem('alma_session_v7', JSON.stringify(member));
+          setAuthError("");
         } else {
-          setError("מפתח משפחתי שגוי. נסה שוב.");
+          setAuthError("מפתח משפחתי שגוי");
         }
       };
 
+      // --- Gemini Logic ---
       const handleSmartImport = async () => {
-        const rawText = prompt('הדבק כאן את לו"ז הטיסות (וואטסאפ, מייל או רשימה חופשית):');
-        if (!rawText || rawText.trim().length < 5) return;
-
+        const rawText = prompt('הדבק את לו"ז הטיסות מהיומן/וואטסאפ:');
+        if (!rawText) return;
         setIsSyncing(true);
+        
         try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const prompt = `אתה עוזר תיאום משפחתי מקצועי. נתח את הטקסט המצורף שמתאר לו"ז טיסות של אמא דיילת.
-          עבור כל טיסה (הלוך או חזור):
-          1. זהה מספר טיסה, מוצא, יעד ושעת המראה/נחיתה.
-          2. צור תווית תאריך קריאה בעברית (למשל: "יום חמישי 14/11").
-          3. עבור כל יום בלו"ז שבו אמא בטיסה, צור בדיוק 4 משימות טיפול בילדה "עלמא":
-             - "איסוף מהגן" (שעה 16:00)
-             - "ארוחת ערב" (שעה 18:30)
-             - "מקלחת" (שעה 19:30)
-             - "הרדמה" (שעה 20:30)
-          
-          החזר אך ורק מערך JSON תקני ללא הסברים נוספים.
-          טקסט המקור: "${rawText}"`;
+          const prompt = `אתה עוזר תיאום משפחתי. נתח את הטקסט הבא והפק JSON של טיסות ומשימות.
+          חשוב: חפש דפוסים כמו "Flight", "Dep", "Arr", "TLV", "JFK".
+          זהה אם מדובר ב-Layover (טיסה שנמשכת כמה ימים) וצור משימות לכל יום בנפרד.
+          לכל יום טיסה/שהייה צור 4 משימות: איסוף (16:00), ארוחת ערב (18:30), מקלחת (19:30), הרדמה (20:30).
+          החזר JSON בלבד.
+          טקסט: "${rawText}"`;
 
           const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
@@ -147,10 +148,14 @@
                     flightNumber: { type: Type.STRING },
                     origin: { type: Type.STRING },
                     destination: { type: Type.STRING },
+                    departureDate: { type: Type.STRING },
+                    arrivalDate: { type: Type.STRING },
+                    pickupTime: { type: Type.STRING },
                     departureTime: { type: Type.STRING },
-                    arrivalTime: { type: Type.STRING },
-                    dateLabel: { type: Type.STRING },
-                    tasks: {
+                    landingTime: { type: Type.STRING },
+                    returnHomeTime: { type: Type.STRING },
+                    isLayover: { type: Type.BOOLEAN },
+                    suggestedTasks: {
                       type: Type.ARRAY,
                       items: {
                         type: Type.OBJECT,
@@ -167,76 +172,87 @@
             }
           });
 
-          // ניקוי התשובה מסימני Markdown אם קיימים
-          let cleanText = response.text || '[]';
-          cleanText = cleanText.replace(/```json/g, '').replace(/```/g, '').trim();
-          
-          const results = JSON.parse(cleanText);
-          const newShifts = [];
-          const newTasks = [];
-
-          results.forEach((res, idx) => {
-            const sId = `s-${Date.now()}-${idx}`;
-            newShifts.push({ ...res, id: sId });
-            if (res.tasks) {
-              res.tasks.forEach((t, tIdx) => {
-                newTasks.push({ 
-                  id: `t-${sId}-${tIdx}`, 
-                  shiftId: sId, 
-                  description: t.desc, 
-                  time: t.time, 
-                  dateLabel: t.date || res.dateLabel 
-                });
-              });
-            }
-          });
-
-          if (newShifts.length > 0) {
-            setShifts(prev => [...newShifts, ...prev]);
-            setTasks(prev => [...newTasks, ...prev]);
-          } else {
-            alert('לא הצלחתי לזהות טיסות בטקסט שהוזן. נסה להדביק מידע מפורט יותר.');
-          }
+          const data = JSON.parse(response.text.replace(/```json|```/g, '').trim());
+          setImportDraft(data);
+          setAdminView('draft_verify');
         } catch (e) {
-          console.error("Gemini Error:", e);
-          alert('שגיאה בניתוח המידע. וודא שהטקסט מכיל תאריכים ושעות ברורים.');
+          alert('שגיאה בניתוח הטקסט. נסה שוב או הזן ידנית.');
         } finally {
           setIsSyncing(false);
         }
       };
 
+      const confirmImport = () => {
+        const newShifts = [...shifts];
+        const newTasks = [...tasks];
+        
+        importDraft.forEach((d, idx) => {
+          const sId = `s-${Date.now()}-${idx}`;
+          newShifts.push({ ...d, id: sId });
+          d.suggestedTasks.forEach((t, tIdx) => {
+            newTasks.push({ 
+              id: `t-${sId}-${tIdx}`, 
+              shiftId: sId, 
+              description: t.desc, 
+              time: t.time, 
+              dateLabel: t.date 
+            });
+          });
+        });
+        
+        setShifts(newShifts);
+        setTasks(newTasks);
+        setImportDraft(null);
+        setAdminView('dashboard');
+      };
+
+      // --- Task Management ---
       const claimTask = (tid) => setTasks(prev => prev.map(t => t.id === tid ? { ...t, assignedTo: currentUser.id } : t));
       const cancelTask = (tid) => setTasks(prev => prev.map(t => t.id === tid ? { ...t, assignedTo: undefined } : t));
 
+      // --- UI Components ---
+      
+      const Navbar = () => (
+        <nav className="fixed bottom-0 left-0 right-0 glass border-t border-slate-200 px-8 pt-3 pb-8 flex justify-between items-center z-50 max-w-[450px] mx-auto safe-bottom shadow-lg">
+          <button onClick={() => setActiveTab('open')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'open' ? 'text-rose-600 font-bold scale-110' : 'text-slate-300'}`}>
+            <Calendar size={26} strokeWidth={activeTab === 'open' ? 3 : 2} />
+            <span className="text-[10px] uppercase">עזרה</span>
+          </button>
+          <button onClick={() => setActiveTab('mine')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'mine' ? 'text-rose-600 font-bold scale-110' : 'text-slate-300'}`}>
+            <CheckCircle size={26} strokeWidth={activeTab === 'mine' ? 3 : 2} />
+            <span className="text-[10px] uppercase">שלי</span>
+          </button>
+          {currentUser?.isAdmin && (
+            <button onClick={() => { setActiveTab('admin'); setAdminView('dashboard'); }} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'admin' ? 'text-indigo-600 font-bold scale-110' : 'text-slate-300'}`}>
+              <Settings size={26} strokeWidth={activeTab === 'admin' ? 3 : 2} />
+              <span className="text-[10px] uppercase">ניהול</span>
+            </button>
+          )}
+        </nav>
+      );
+
       if (!isAuthorized) {
         return (
-          <div className="flex flex-col h-screen bg-rose-500 items-center justify-center p-8 text-white animate-in relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full -mr-20 -mt-20"></div>
-            <div className="bg-white/20 p-10 rounded-[55px] mb-8 shadow-2xl backdrop-blur-xl border border-white/20">
-              <Shield size={80} className="fill-white" />
+          <div className="flex flex-col h-screen bg-rose-500 items-center justify-center p-10 text-white animate-in relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-white/10 rounded-full -mr-20 -mt-20"></div>
+            <div className="bg-white/20 p-8 rounded-[50px] mb-8 shadow-2xl backdrop-blur-md border border-white/20">
+              <Shield size={70} className="fill-white" />
             </div>
-            <h1 className="text-4xl font-black mb-2 tracking-tighter">דואגים לעלמא</h1>
-            <p className="text-rose-100 text-center mb-10 font-bold opacity-80 uppercase tracking-widest text-[10px]">Private Family Hub</p>
+            <h1 className="text-3xl font-black mb-2 tracking-tighter">דואגים לעלמא</h1>
+            <p className="text-rose-100 text-center mb-10 font-bold opacity-80 text-xs">כניסה מאובטחת למשפחה בלבד</p>
             <div className="w-full max-w-xs space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest opacity-60 px-4">מפתח גישה</label>
-                <input 
-                  type="text" 
-                  value={keyInput} 
-                  onChange={e => setKeyInput(e.target.value)}
-                  placeholder="הכנס קוד משפחתי..." 
-                  className="w-full bg-white/10 border-white/20 text-white placeholder:text-rose-200 text-center font-bold"
-                />
+                <label className="text-[10px] font-black uppercase tracking-widest opacity-60 mr-2">מפתח משפחתי</label>
+                <div className="relative">
+                  <Key className="absolute right-3 top-1/2 -translate-y-1/2 text-rose-300" size={18} />
+                  <input type="text" value={keyInput} onChange={e => setKeyInput(e.target.value)} placeholder="קוד סודי..." className="w-full bg-white/10 border-white/20 text-white placeholder:text-rose-200 text-center font-bold pr-10" />
+                </div>
               </div>
-              {error && <div className="bg-rose-600/50 p-3 rounded-2xl text-[10px] font-bold text-center border border-rose-400 animate-pulse">{error}</div>}
+              {authError && <div className="bg-red-900/40 p-3 rounded-2xl text-[10px] font-bold text-center border border-red-500/30 animate-pulse">{authError}</div>}
               <div className="grid grid-cols-2 gap-3">
-                {MEMBERS.map(m => (
-                  <button 
-                    key={m.id} 
-                    onClick={() => handleAuth(m)}
-                    className="bg-white/10 p-4 rounded-3xl border border-white/10 hover:bg-white/20 transition-all flex flex-col items-center gap-2 group"
-                  >
-                    <img src={m.avatar} className="w-12 h-12 rounded-full border-2 border-white/20 group-hover:scale-110 transition-transform" />
+                {members.map(m => (
+                  <button key={m.id} onClick={() => handleLogin(m)} className="bg-white/10 p-4 rounded-3xl border border-white/10 hover:bg-white/20 transition-all flex flex-col items-center gap-2 group">
+                    <img src={m.avatar} className="w-12 h-12 rounded-full border-2 border-white/20 group-hover:scale-105 transition-transform" />
                     <span className="text-xs font-black">{m.name}</span>
                   </button>
                 ))}
@@ -249,110 +265,59 @@
       return (
         <div className="flex flex-col h-screen bg-slate-50 max-w-[450px] mx-auto shadow-2xl overflow-hidden relative border-x border-slate-200">
           
-          {/* SYNC OVERLAY */}
-          {isSyncing && (
-            <div className="absolute inset-0 z-[100] bg-rose-500/90 backdrop-blur-md flex flex-col items-center justify-center text-white p-10 text-center animate-in">
-              <span className="loader-ring mb-6"></span>
-              <Sparkles className="mb-4 text-rose-200 animate-bounce" size={32} />
-              <h2 className="text-2xl font-black mb-2">מנתח את הלו"ז...</h2>
-              <p className="font-bold text-rose-100 opacity-80">הבינה המלאכותית של Gemini בונה לעלמא תוכנית טיפול אישית</p>
-            </div>
-          )}
-
-          <header className="bg-rose-500 pt-16 pb-8 px-6 text-white shadow-xl shrink-0 relative overflow-hidden">
-            <div className="flex justify-between items-center relative z-10">
-              <div className="flex items-center gap-4">
-                <div className="bg-white/20 p-3 rounded-2xl">
-                   <Heart size={30} className="fill-white" />
+          <header className="bg-rose-500 pt-14 pb-6 px-6 text-white shadow-lg shrink-0 relative overflow-hidden">
+             <div className="flex justify-between items-center relative z-10">
+                <div className="flex items-center gap-3">
+                   <div className="bg-white/20 p-2 rounded-xl"><Heart size={24} className="fill-white" /></div>
+                   <h1 className="text-xl font-extrabold tracking-tight">דואגים לעלמא</h1>
                 </div>
-                <div>
-                  <h1 className="text-2xl font-black tracking-tight leading-none">דואגים לעלמא</h1>
-                  <p className="text-[10px] font-bold opacity-60 mt-1 uppercase tracking-widest">Family Care Network</p>
-                </div>
-              </div>
-              <button onClick={() => { localStorage.removeItem('alma_session_v6'); window.location.reload(); }} className="bg-rose-600/50 p-2.5 rounded-xl border border-white/20 active:scale-90 transition-all">
-                <LogIn size={20} className="rotate-180" />
-              </button>
-            </div>
+                <button onClick={() => { setIsAuthorized(false); localStorage.removeItem('alma_session_v7'); window.location.reload(); }} className="bg-rose-600/50 p-2 rounded-lg border border-white/20"><LogIn size={18} className="rotate-180" /></button>
+             </div>
           </header>
 
-          <div className="bg-white/90 backdrop-blur-xl p-4 border-b border-slate-100 flex items-center justify-between shrink-0 shadow-sm relative z-20">
-            <div className="flex items-center gap-4">
-              <img src={currentUser.avatar} className="w-14 h-14 rounded-full border-4 border-rose-50 shadow-md" />
-              <div>
-                <p className="font-extrabold text-lg text-slate-800 leading-tight">שלום, {currentUser.name}</p>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{currentUser.role} במשמרת</span>
-              </div>
-            </div>
-            <div className="bg-rose-50 px-5 py-2.5 rounded-[22px] text-center border border-rose-100 shadow-sm">
-              <p className="text-[9px] font-black text-rose-400 uppercase leading-none mb-1">משימות</p>
-              <p className="text-xl font-black text-rose-600 leading-none">{tasks.filter(t => t.assignedTo === currentUser.id).length}</p>
-            </div>
-          </div>
-
-          <main className="flex-1 overflow-y-auto p-4 space-y-6 pb-32">
+          <main className="flex-1 overflow-y-auto p-4 space-y-6 pb-32 no-scrollbar">
+            
             {activeTab === 'open' && (
               <div className="space-y-6 animate-in">
                 {shifts.length === 0 && (
-                  <div className="text-center py-24 premium-card space-y-4 border-2 border-dashed border-slate-100">
-                    <Plane size={48} className="mx-auto text-slate-200" />
-                    <h3 className="text-xl font-black text-slate-800">הלו"ז נקי</h3>
-                    <p className="text-slate-400 text-sm px-10 leading-relaxed italic">אין טיסות מתוזמנות כרגע. אמא בבית עם עלמא!</p>
+                  <div className="text-center py-20 premium-card">
+                    <Plane size={40} className="mx-auto text-slate-100 mb-4" />
+                    <p className="text-slate-400 font-bold">הלו"ז נקי, אמא בבית!</p>
                   </div>
                 )}
-
-                {shifts.map(shift => (
-                  <div key={shift.id} className="premium-card p-6 space-y-6 relative overflow-hidden transition-all hover:scale-[1.01]">
-                    <div className="bg-rose-50 -mx-6 -mt-6 p-5 rounded-t-[35px] flex justify-between items-center border-b border-rose-100/50">
-                       <div className="flex items-center gap-3">
-                         <Calendar size={20} className="text-rose-500" />
-                         <span className="text-xl font-black text-slate-800 tracking-tight">{shift.dateLabel}</span>
+                {shifts.map(s => (
+                  <div key={s.id} className="premium-card p-5 space-y-4">
+                    <div className="flex justify-between items-center border-b border-slate-50 pb-3">
+                       <div className="flex items-center gap-2">
+                          <Calendar size={18} className="text-rose-500" />
+                          <span className="font-black text-slate-800 text-lg">{s.departureDate}</span>
                        </div>
-                       <span className="bg-white/80 text-slate-400 px-3 py-1 rounded-full text-[10px] font-black border uppercase tracking-tighter">טיסת {shift.flightNumber}</span>
+                       <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-2 py-1 rounded-full border">טיסה {s.flightNumber}</span>
                     </div>
-
-                    <div className="flex items-center justify-between text-center px-4">
-                      <div className="flex-1">
-                        <p className="text-3xl font-black text-slate-800 tracking-tighter">{shift.origin}</p>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">המראה {shift.departureTime}</p>
-                      </div>
-                      <Plane className="text-slate-100 rotate-180 flex-none mx-4" size={24} />
-                      <div className="flex-1">
-                        <p className="text-3xl font-black text-slate-800 tracking-tighter">{shift.destination}</p>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">נחיתה {shift.arrivalTime}</p>
-                      </div>
+                    <div className="flex justify-between items-center text-center px-4">
+                       <div><p className="text-2xl font-black text-slate-800">{s.origin}</p><p className="text-[9px] text-slate-400 uppercase font-bold">המראה {s.departureTime}</p></div>
+                       <Plane className="text-slate-100 rotate-180" size={20} />
+                       <div><p className="text-2xl font-black text-slate-800">{s.destination}</p><p className="text-[9px] text-slate-400 uppercase font-bold">נחיתה {s.landingTime}</p></div>
                     </div>
-
-                    <div className="space-y-3">
-                      {tasks.filter(t => t.shiftId === shift.id).map(task => (
-                        <div key={task.id} className="bg-slate-50/70 p-4 rounded-[28px] border border-slate-100/50">
-                          <div className="flex items-center gap-4 mb-4">
-                            <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-100">
-                              {task.description.includes('איסוף') ? <Car className="text-blue-500" /> : 
-                               task.description.includes('ארוחה') ? <Utensils className="text-orange-500" /> : 
-                               <Moon className="text-indigo-500" />}
+                    <div className="space-y-2">
+                       {tasks.filter(t => t.shiftId === s.id).map(t => (
+                         <div key={t.id} className="bg-slate-50 p-4 rounded-2xl flex items-center justify-between border border-slate-100">
+                            <div className="flex items-center gap-3">
+                               <div className="p-2 bg-white rounded-xl shadow-sm">
+                                 {t.description.includes('איסוף') ? <Car className="text-blue-500" size={18} /> : t.description.includes('ארוחה') ? <Utensils className="text-orange-500" size={18} /> : <Moon className="text-indigo-500" size={18} />}
+                               </div>
+                               <div><p className="font-bold text-slate-700 text-sm">{t.description}</p><p className="text-[10px] text-slate-400 font-bold uppercase">{t.time}</p></div>
                             </div>
-                            <div className="flex-1">
-                              <p className="font-extrabold text-slate-800 text-base leading-tight">{task.description}</p>
-                              <p className="text-[11px] text-slate-400 font-black uppercase mt-1 flex items-center gap-1"><Clock size={12} /> {task.time}</p>
-                            </div>
-                          </div>
-
-                          {task.assignedTo ? (
-                            <div className="bg-emerald-50 p-3 rounded-2xl flex items-center justify-between border border-emerald-100/50">
-                              <div className="flex items-center gap-3">
-                                <img src={MEMBERS.find(f => f.id === task.assignedTo)?.avatar} className="w-8 h-8 rounded-full border border-white" />
-                                <span className="text-xs font-black text-emerald-700">{MEMBERS.find(f => f.id === task.assignedTo)?.name} מטפל/ת!</span>
-                              </div>
-                              {task.assignedTo === currentUser.id && (
-                                <button onClick={() => cancelTask(task.id)} className="text-[10px] font-black text-red-400 underline decoration-2 underline-offset-4">ביטול עזרה</button>
-                              )}
-                            </div>
-                          ) : (
-                            <button onClick={() => claimTask(task.id)} className="w-full py-4 bg-emerald-500 text-white rounded-[22px] font-black text-xl shadow-xl shadow-emerald-100 active:scale-95 transition-all">אני אעזור!</button>
-                          )}
-                        </div>
-                      ))}
+                            {t.assignedTo ? (
+                               <div className="flex items-center gap-2">
+                                  <img src={members.find(m => m.id === t.assignedTo)?.avatar} className="w-8 h-8 rounded-full border border-white" />
+                                  {t.assignedTo === currentUser.id && <button onClick={() => cancelTask(t.id)} className="text-red-500"><X size={16}/></button>}
+                               </div>
+                            ) : (
+                               <button onClick={() => claimTask(t.id)} className="bg-emerald-500 text-white px-4 py-2 rounded-xl text-[11px] font-black shadow-lg shadow-emerald-100">אני אעזור!</button>
+                            )}
+                         </div>
+                       ))}
                     </div>
                   </div>
                 ))}
@@ -361,118 +326,167 @@
 
             {activeTab === 'mine' && (
               <div className="space-y-4 animate-in">
-                <h2 className="text-2xl font-black text-slate-800 px-2 flex items-center gap-3"><CheckCircle className="text-emerald-500" size={28}/> המשימות שלי</h2>
-                {tasks.filter(t => t.assignedTo === currentUser.id).length === 0 ? (
-                  <div className="text-center py-24 premium-card border-2 border-dashed">
-                    <Heart size={48} className="mx-auto text-rose-100 mb-4" />
-                    <p className="text-slate-400 font-black">עדיין לא לקחת על עצמך משימות עזרה...</p>
-                  </div>
-                ) : (
-                  tasks.filter(t => t.assignedTo === currentUser.id).map(t => (
-                    <div key={t.id} className="premium-card p-6 border-r-[15px] border-emerald-500 flex justify-between items-center transition-all hover:scale-[1.02]">
-                       <div>
-                         <p className="text-[10px] text-slate-400 font-black uppercase mb-1">{t.dateLabel} • {t.time}</p>
-                         <p className="text-xl font-black text-slate-800 tracking-tight leading-tight">{t.description}</p>
-                       </div>
-                       <button onClick={() => cancelTask(t.id)} className="bg-red-50 p-4 rounded-2xl text-red-300 hover:text-red-500 transition-colors">
-                         <Trash2 size={24} />
-                       </button>
-                    </div>
-                  ))
-                )}
+                 <h2 className="text-xl font-black text-slate-800 px-2 flex items-center gap-2"><CheckCircle className="text-emerald-500" /> המשימות שלי</h2>
+                 {tasks.filter(t => t.assignedTo === currentUser.id).length === 0 ? (
+                   <div className="text-center py-20 premium-card text-slate-300 font-bold">עוד לא בחרת משימות...</div>
+                 ) : (
+                   tasks.filter(t => t.assignedTo === currentUser.id).map(t => (
+                     <div key={t.id} className="premium-card p-5 border-r-[10px] border-emerald-500 flex justify-between items-center">
+                        <div><p className="text-[10px] text-slate-400 font-bold uppercase mb-1">{t.dateLabel} • {t.time}</p><p className="text-lg font-black text-slate-800">{t.description}</p></div>
+                        <button onClick={() => cancelTask(t.id)} className="text-red-200 hover:text-red-500 transition-colors"><Trash2 size={20}/></button>
+                     </div>
+                   ))
+                 )}
               </div>
             )}
 
-            {activeTab === 'admin' && currentUser.isAdmin && (
-              <div className="space-y-8 animate-in pb-12">
-                <div className="flex items-center justify-between px-2">
-                  <h2 className="text-2xl font-black text-slate-800 flex items-center gap-3"><Settings className="text-indigo-500" size={28} /> ניהול הורים</h2>
-                  <button onClick={handleSmartImport} disabled={isSyncing} className="bg-indigo-600 text-white p-3 rounded-2xl flex items-center gap-2 font-black text-xs shadow-lg active:scale-95 transition-all">
-                    <Sparkles size={16} /> ייבוא חכם
-                  </button>
-                </div>
-
-                <div className="space-y-4">
-                  {shifts.map(s => (
-                    <div key={s.id} className="premium-card p-6 space-y-5 border border-slate-100 shadow-sm">
-                      {editingShiftId === s.id ? (
-                        <div className="space-y-3 animate-in">
-                          <input value={editForm.flightNumber} onChange={e => setEditForm({...editForm, flightNumber: e.target.value})} placeholder="מס' טיסה" className="font-bold text-sm" />
-                          <div className="flex gap-2">
-                            <button onClick={() => { setShifts(prev => prev.map(sh => sh.id === s.id ? {...sh, ...editForm} : sh)); setEditingShiftId(null); }} className="flex-1 bg-indigo-600 text-white p-4 rounded-2xl font-black text-xs shadow-lg">שמור שינויים</button>
-                            <button onClick={() => setEditingShiftId(null)} className="bg-slate-100 p-4 rounded-2xl font-black text-xs">בטל</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex justify-between items-center pb-4 border-b border-slate-50">
-                          <div className="flex items-center gap-4">
-                            <div className="bg-indigo-50 p-3 rounded-2xl text-indigo-500"><Plane size={24}/></div>
-                            <div>
-                               <p className="font-black text-slate-800 text-lg leading-none">{s.flightNumber} • {s.dateLabel}</p>
-                               <p className="text-[10px] text-slate-400 font-black mt-1.5 uppercase tracking-tighter">{s.origin} ➔ {s.destination}</p>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <button onClick={() => { setEditingShiftId(s.id); setEditForm(s); }} className="p-3 bg-indigo-50 text-indigo-500 rounded-xl hover:bg-indigo-100"><Edit2 size={18}/></button>
-                            <button onClick={() => { if(confirm('למחוק טיסה זו ואת כל המשימות שלה?')) { setShifts(shifts.filter(x => x.id !== s.id)); setTasks(tasks.filter(x => x.shiftId !== s.id)); } }} className="p-3 bg-red-50 text-red-400 rounded-xl hover:bg-red-100"><Trash2 size={18}/></button>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="space-y-2">
-                        {tasks.filter(t => t.shiftId === s.id).map(t => (
-                          <div key={t.id} className="bg-slate-50 p-3 rounded-2xl flex items-center justify-between group">
-                             {editingTaskId === t.id ? (
-                               <div className="flex-1 flex gap-2 animate-in">
-                                  <input value={editForm.description} onChange={e => setEditForm({...editForm, description: e.target.value})} className="flex-1 bg-white text-xs font-bold" />
-                                  <input value={editForm.time} onChange={e => setEditForm({...editForm, time: e.target.value})} className="w-16 bg-white text-xs font-bold text-center" />
-                                  <button onClick={() => { setTasks(prev => prev.map(ta => ta.id === t.id ? {...ta, ...editForm} : ta)); setEditingTaskId(null); }} className="bg-indigo-500 text-white p-2 rounded-lg"><Save size={14}/></button>
-                               </div>
-                             ) : (
-                               <>
-                                 <span className="text-xs font-bold text-slate-700">{t.description} ({t.time})</span>
-                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => { setEditingTaskId(t.id); setEditForm(t); }} className="p-1.5 text-indigo-400"><Edit2 size={14}/></button>
-                                    <button onClick={() => setTasks(tasks.filter(x => x.id !== t.id))} className="p-1.5 text-red-300"><Trash2 size={14}/></button>
-                                 </div>
-                               </>
-                             )}
-                          </div>
-                        ))}
-                      </div>
+            {activeTab === 'admin' && (
+              <div className="space-y-6 animate-in">
+                {adminView === 'dashboard' && (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                       <button onClick={() => setAdminView('flights')} className="premium-card p-6 flex flex-col items-center gap-3 active:scale-95 transition-all">
+                          <div className="bg-indigo-50 p-4 rounded-2xl text-indigo-500"><Plane size={30}/></div>
+                          <span className="font-black text-sm">ניהול טיסות</span>
+                       </button>
+                       <button onClick={() => setAdminView('users')} className="premium-card p-6 flex flex-col items-center gap-3 active:scale-95 transition-all">
+                          <div className="bg-emerald-50 p-4 rounded-2xl text-emerald-500"><Users size={30}/></div>
+                          <span className="font-black text-sm">משתמשים</span>
+                       </button>
                     </div>
-                  ))}
-                  <button 
-                    onClick={() => {
-                       const fl = prompt('מספר טיסה:');
-                       const dt = prompt('תאריך (למשל יום א 10/11):');
-                       if (fl && dt) setShifts([...shifts, { id: 's-'+Date.now(), flightNumber: fl, dateLabel: dt, origin: 'TLV', destination: 'JFK', departureTime: '10:00', arrivalTime: '18:00' }]);
-                    }}
-                    className="w-full py-4 border-2 border-dashed border-slate-200 rounded-[28px] text-slate-300 font-black uppercase text-xs hover:border-indigo-200 hover:text-indigo-400 transition-all"
-                  >
-                    + הוסף טיסה ידנית
-                  </button>
-                </div>
+                    <div className="premium-card p-6 space-y-4">
+                       <h3 className="font-black text-slate-800">פעולות מהירות</h3>
+                       <button onClick={handleSmartImport} disabled={isSyncing} className="w-full bg-slate-900 text-white p-4 rounded-2xl flex items-center justify-center gap-3 font-black text-sm shadow-xl active:scale-95 transition-all">
+                          {isSyncing ? <div className="loader"></div> : <Sparkles size={18} className="text-rose-400" />}
+                          ייבוא חכם (Draft & Verify)
+                       </button>
+                       <button onClick={() => { setAdminView('manual_entry'); setEditingShift({ flightNumber: '', origin: 'TLV', destination: '', departureDate: '', arrivalDate: '', pickupTime: '10:00', departureTime: '13:00', landingTime: '21:00', returnHomeTime: '23:00' }); }} className="w-full bg-indigo-500 text-white p-4 rounded-2xl flex items-center justify-center gap-3 font-black text-sm shadow-xl active:scale-95 transition-all">
+                          <Plus size={18} /> הוספת טיסה ידנית
+                       </button>
+                    </div>
+                  </div>
+                )}
+
+                {adminView === 'users' && (
+                  <div className="space-y-6 animate-in">
+                    <button onClick={() => setAdminView('dashboard')} className="flex items-center gap-2 text-slate-400 font-bold"><ChevronLeft size={20} /> חזרה לדשבורד</button>
+                    <div className="premium-card p-4 divide-y divide-slate-50">
+                       {members.map(m => (
+                         <div key={m.id} className="py-4 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                               <img src={m.avatar} className="w-10 h-10 rounded-full" />
+                               <div><p className="font-black text-slate-800">{m.name}</p><p className="text-[10px] text-slate-400 font-bold">{m.role} {m.isAdmin ? '• אדמין' : ''}</p></div>
+                            </div>
+                            <button onClick={() => setMembers(members.filter(x => x.id !== m.id))} className="text-red-300 p-2"><Trash2 size={16}/></button>
+                         </div>
+                       ))}
+                       <button onClick={() => {
+                         const n = prompt('שם מלא:');
+                         const r = prompt('תפקיד (סבתא/סבא/דוד):');
+                         if(n && r) setMembers([...members, { id: 'm'+Date.now(), name: n, role: r, avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${n}`, isAdmin: false }]);
+                       }} className="w-full py-4 text-indigo-500 font-black flex items-center justify-center gap-2"><UserPlus size={18}/> הוסף בן משפחה</button>
+                    </div>
+                  </div>
+                )}
+
+                {adminView === 'flights' && (
+                  <div className="space-y-6 animate-in">
+                    <button onClick={() => setAdminView('dashboard')} className="flex items-center gap-2 text-slate-400 font-bold"><ChevronLeft size={20} /> חזרה לדשבורד</button>
+                    {shifts.map(s => (
+                      <div key={s.id} className="premium-card p-5 space-y-4 border-r-8 border-indigo-500">
+                         <div className="flex justify-between items-center">
+                            <p className="font-black text-slate-800">{s.flightNumber} ➔ {s.destination}</p>
+                            <div className="flex gap-2">
+                               <button onClick={() => { setEditingShift(s); setAdminView('manual_entry'); }} className="p-2 bg-slate-50 text-indigo-400 rounded-lg"><Edit2 size={16}/></button>
+                               <button onClick={() => { setShifts(shifts.filter(x => x.id !== s.id)); setTasks(tasks.filter(t => t.shiftId !== s.id)); }} className="p-2 bg-red-50 text-red-400 rounded-lg"><Trash2 size={16}/></button>
+                            </div>
+                         </div>
+                         <p className="text-[10px] text-slate-400 font-bold uppercase">{s.departureDate} • {s.origin} to {s.destination}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {adminView === 'manual_entry' && (
+                  <div className="space-y-6 animate-in">
+                    <button onClick={() => setAdminView('dashboard')} className="flex items-center gap-2 text-slate-400 font-bold"><ChevronLeft size={20} /> ביטול</button>
+                    <div className="premium-card p-6 space-y-4">
+                       <h3 className="font-black text-slate-800 text-xl border-b pb-3">פרטי טיסה</h3>
+                       <div className="space-y-3">
+                          <label className="text-xs font-black text-slate-400">מספר טיסה ויעד</label>
+                          <div className="grid grid-cols-2 gap-2">
+                             <input value={editingShift.flightNumber} onChange={e => setEditingShift({...editingShift, flightNumber: e.target.value})} placeholder="מס' טיסה (LY123)" />
+                             <input value={editingShift.destination} onChange={e => setEditingShift({...editingShift, destination: e.target.value})} placeholder="עיר יעד" />
+                          </div>
+                          <label className="text-xs font-black text-slate-400">תאריכי המראה ונחיתה (Layover?)</label>
+                          <div className="grid grid-cols-2 gap-2">
+                             <input type="date" value={editingShift.departureDate} onChange={e => setEditingShift({...editingShift, departureDate: e.target.value})} />
+                             <input type="date" value={editingShift.arrivalDate} onChange={e => setEditingShift({...editingShift, arrivalDate: e.target.value})} />
+                          </div>
+                          <label className="text-xs font-black text-slate-400">זמני משמרת (איסוף ➔ המראה ➔ נחיתה ➔ חזרה)</label>
+                          <div className="grid grid-cols-2 gap-2">
+                             <input type="time" value={editingShift.pickupTime} onChange={e => setEditingShift({...editingShift, pickupTime: e.target.value})} placeholder="איסוף מהבית" />
+                             <input type="time" value={editingShift.departureTime} onChange={e => setEditingShift({...editingShift, departureTime: e.target.value})} placeholder="המראה" />
+                             <input type="time" value={editingShift.landingTime} onChange={e => setEditingShift({...editingShift, landingTime: e.target.value})} placeholder="נחיתה" />
+                             <input type="time" value={editingShift.returnHomeTime} onChange={e => setEditingShift({...editingShift, returnHomeTime: e.target.value})} placeholder="חזרה הביתה" />
+                          </div>
+                          <button onClick={() => {
+                            const sId = editingShift.id || `s-${Date.now()}`;
+                            const isNew = !editingShift.id;
+                            
+                            if(isNew) {
+                              setShifts([...shifts, { ...editingShift, id: sId }]);
+                              // Auto-generate basic tasks for manual entry
+                              const t1 = { id: `t-${sId}-1`, shiftId: sId, description: 'איסוף מהגן', time: '16:00', dateLabel: editingShift.departureDate };
+                              const t2 = { id: `t-${sId}-2`, shiftId: sId, description: 'ארוחת ערב', time: '18:30', dateLabel: editingShift.departureDate };
+                              setTasks([...tasks, t1, t2]);
+                            } else {
+                              setShifts(shifts.map(s => s.id === sId ? editingShift : s));
+                            }
+                            setAdminView('dashboard');
+                          }} className="w-full bg-rose-500 text-white p-4 rounded-2xl font-black shadow-xl mt-4">שמור טיסה בלו"ז</button>
+                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {adminView === 'draft_verify' && importDraft && (
+                  <div className="space-y-6 animate-in">
+                    <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 flex items-center gap-3">
+                       <AlertTriangle className="text-amber-500" />
+                       <p className="text-xs font-bold text-amber-700">Gemini חילץ את המידע הבא. נא לאשר לפני הוספה ללו"ז.</p>
+                    </div>
+                    {importDraft.map((d, i) => (
+                       <div key={i} className="premium-card p-5 space-y-4 border-2 border-indigo-200">
+                          <div className="flex justify-between items-center border-b pb-2">
+                             <p className="font-black text-indigo-600">טיסת {d.flightNumber} ל{d.destination}</p>
+                             <p className="text-[10px] font-bold">{d.departureDate}</p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4 text-[10px] font-bold text-slate-500 uppercase">
+                             <div>המראה: {d.departureTime}</div>
+                             <div>נחיתה: {d.landingTime}</div>
+                          </div>
+                          <div className="bg-slate-50 p-3 rounded-xl space-y-2">
+                             {d.suggestedTasks.map((t, ti) => (
+                               <div key={ti} className="flex justify-between items-center text-[10px] font-bold">
+                                  <span>{t.desc} ({t.time})</span>
+                                  <span className="text-slate-300">{t.date}</span>
+                               </div>
+                             ))}
+                          </div>
+                       </div>
+                    ))}
+                    <div className="flex gap-2">
+                       <button onClick={confirmImport} className="flex-1 bg-emerald-500 text-white p-4 rounded-2xl font-black shadow-xl">אישור והוספה ללו"ז</button>
+                       <button onClick={() => setAdminView('dashboard')} className="bg-slate-100 p-4 rounded-2xl font-black">ביטול</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </main>
 
-          <nav className="fixed bottom-0 left-0 right-0 glass border-t border-slate-200/50 px-12 pt-4 pb-12 flex justify-between items-center z-50 max-w-[450px] mx-auto safe-bottom shadow-[0_-15px_40px_rgba(0,0,0,0.06)]">
-            <button onClick={() => setActiveTab('open')} className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'open' ? 'text-rose-500 scale-110 font-black' : 'text-slate-300'}`}>
-              <Calendar size={28} strokeWidth={activeTab === 'open' ? 3 : 2} />
-              <span className="text-[10px] uppercase tracking-wider">עזרה</span>
-            </button>
-            <button onClick={() => setActiveTab('mine')} className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'mine' ? 'text-rose-500 scale-110 font-black' : 'text-slate-300'}`}>
-              <CheckCircle size={28} strokeWidth={activeTab === 'mine' ? 3 : 2} />
-              <span className="text-[10px] uppercase tracking-wider">שלי</span>
-            </button>
-            {currentUser?.isAdmin && (
-              <button onClick={() => setActiveTab('admin')} className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'admin' ? 'text-indigo-500 scale-110 font-black' : 'text-slate-300'}`}>
-                <Settings size={28} strokeWidth={activeTab === 'admin' ? 3 : 2} />
-                <span className="text-[10px] uppercase tracking-wider">ניהול</span>
-              </button>
-            )}
-          </nav>
+          <Navbar />
         </div>
       );
     };

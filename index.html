@@ -61,7 +61,7 @@
     import { GoogleGenAI, Type } from "@google/genai";
 
     const FAMILY_KEY = "ALMA2024";
-    const API_URL = "https://script.google.com/macros/s/AKfycbzGZ8j7ZumQUBT6XRfg7qKNO7hg8B9xSnYKd8zQQLJBQHKVc7K0zQgy6LASQ8EjFNzT/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbz1YFgrYz91xz9NoL_ZptsYF5tgjB_okj_DjXNbbePp66E_hxXoz2E9ON6Tt-iEoJM/exec";
 
     const DEFAULT_ALMA_TASKS = [
       { description: 'איסוף מהגן', time: '16:30' },
@@ -100,10 +100,13 @@
           const cloudData = await response.json();
           
           if (cloudData) {
-            // Flights Mapping: [id, flightNumber, origin, destination, departureDate, arrivalDate, pickupTime, departureTime, landingTime, returnHomeTime, isLayover]
+            // Mapping flights (raw arrays to objects)
             const flightRows = cloudData.flights || [];
             if (flightRows.length > 0) {
-              const dataRows = flightRows[0][0] === "id" ? flightRows.slice(1) : flightRows;
+              // Only skip first row if it's strictly the header "id"
+              const startIdx = (flightRows[0][0] === "id") ? 1 : 0;
+              const dataRows = flightRows.slice(startIdx);
+              
               const mappedShifts = dataRows.map(row => ({
                 id: String(row[0] || ''),
                 flightNumber: String(row[1] || ''),
@@ -120,10 +123,12 @@
               setShifts(mappedShifts);
             }
 
-            // Tasks Mapping: [id, flightId, description, time, dateLabel, assignedTo]
+            // Mapping tasks (raw arrays to objects)
             const taskRows = cloudData.tasks || [];
             if (taskRows.length > 0) {
-              const dataRows = taskRows[0][0] === "id" ? taskRows.slice(1) : taskRows;
+              const startIdx = (taskRows[0][0] === "id") ? 1 : 0;
+              const dataRows = taskRows.slice(startIdx);
+              
               const mappedTasks = dataRows.map(row => ({
                 id: String(row[0] || ''),
                 shiftId: String(row[1] || ''),

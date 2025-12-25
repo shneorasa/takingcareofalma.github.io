@@ -4,7 +4,7 @@ import ReactDOM from 'react-dom/client';
 import { Plane, Heart, Clock, Calendar, CheckCircle, RefreshCw, MapPin, Utensils, Moon, Car, Settings, BarChart, Trash2, Plus, Edit2, X, Save, Share2, Info } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
-// --- FROM types.ts ---
+// --- Types ---
 type TaskType = 'איסוף' | 'ארוחה' | 'מקלחת והשכבה' | 'לינה' | 'עזרה כללית';
 
 interface CareTask {
@@ -50,7 +50,7 @@ interface ExtractionResult {
   suggestedTasks: { type: TaskType; description: string; time: string; dateLabel: string }[];
 }
 
-// --- FROM services/geminiService.ts ---
+// --- Service ---
 class GeminiService {
   private ai: GoogleGenAI;
   constructor() {
@@ -70,7 +70,7 @@ class GeminiService {
          * "ארוחת ערב לעלמא" (סביב 18:30 אם בטווח הטיסה).
          * "מקלחת והשכבה של עלמא" (סביב 20:00 אם בטווח הטיסה).
     
-    החזר רשימת JSON בעברית בלבד. ודא שכל משימה כוללת dateLabel (למשל: "יום חמישי 25/10").
+    החזר רשימת JSON בעברית בלבד. ודא שכל משימה כוללת dateLabel.
 
     אירועים לניתוח:
     ${eventStrings.join('\n---\n')}
@@ -124,7 +124,7 @@ class GeminiService {
 }
 const geminiService = new GeminiService();
 
-// --- FROM App.tsx ---
+// --- Main App Component ---
 const FAMILY_MEMBERS: FamilyMember[] = [
   { id: 'm1', name: 'אמא', role: 'אמא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mom', isAdmin: true },
   { id: 'f1', name: 'אבא', role: 'אבא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dad', isAdmin: true },
@@ -422,91 +422,41 @@ const App: React.FC = () => {
               <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
                 <Settings className="text-indigo-500" /> ניהול הורים (Backoffice)
               </h2>
-              <button className="bg-indigo-500 text-white p-2 rounded-xl shadow-lg active:scale-95 transition-all">
-                <Share2 size={18} />
-              </button>
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-               <div className="bg-indigo-50 p-5 rounded-[32px] border border-indigo-100">
-                 <p className="text-[10px] font-black text-indigo-400 uppercase">טיסות במערכת</p>
-                 <p className="text-3xl font-black text-indigo-700 mt-1">{shifts.length}</p>
-               </div>
-               <div className="bg-emerald-50 p-5 rounded-[32px] border border-emerald-100">
-                 <p className="text-[10px] font-black text-emerald-400 uppercase">כיסוי עזרה</p>
-                 <p className="text-3xl font-black text-emerald-700 mt-1">
-                   {tasks.length > 0 ? Math.round((tasks.filter(t => t.assignedTo).length / tasks.length) * 100) : 0}%
-                 </p>
-               </div>
-            </div>
-
-            <div className="space-y-4">
-              <p className="text-sm font-black text-slate-500 flex items-center gap-2 px-2">
-                <Edit2 size={14} /> עריכת טיסות ומשימות של עלמא
-              </p>
-              
-              {shifts.map(shift => (
-                <div key={shift.id} className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm space-y-4">
-                  {editingShiftId === shift.id ? (
-                    <div className="space-y-3 animate-in fade-in">
-                      <div className="grid grid-cols-2 gap-2">
-                        <input value={editShiftForm.flightNumber} onChange={e => setEditShiftForm({...editShiftForm, flightNumber: e.target.value})} className="w-full bg-slate-50 p-3 rounded-xl text-xs font-bold border border-slate-200" placeholder="מס' טיסה" />
-                        <input value={editShiftForm.dateLabel} onChange={e => setEditShiftForm({...editShiftForm, dateLabel: e.target.value})} className="w-full bg-slate-50 p-3 rounded-xl text-xs font-bold border border-slate-200" placeholder="תאריך" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <input value={editShiftForm.origin} onChange={e => setEditShiftForm({...editShiftForm, origin: e.target.value})} className="w-full bg-slate-50 p-3 rounded-xl text-xs font-bold border border-slate-200" placeholder="מוצא" />
-                        <input value={editShiftForm.destination} onChange={e => setEditShiftForm({...editShiftForm, destination: e.target.value})} className="w-full bg-slate-50 p-3 rounded-xl text-xs font-bold border border-slate-200" placeholder="יעד" />
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={saveShiftEdit} className="flex-1 bg-indigo-500 text-white p-3 rounded-xl font-bold text-xs">שמור טיסה</button>
-                        <button onClick={() => setEditingShiftId(null)} className="bg-slate-100 p-3 rounded-xl"><X size={14}/></button>
-                      </div>
+            {shifts.map(shift => (
+              <div key={shift.id} className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-black text-slate-800 text-lg leading-none">{shift.flightNumber} • {shift.dateLabel}</p>
                     </div>
-                  ) : (
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-black text-slate-800 text-lg leading-none">{shift.flightNumber} • {shift.dateLabel}</p>
-                        <p className="text-xs text-slate-400 mt-1 font-bold">{shift.origin} ➔ {shift.destination}</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => startEditingShift(shift)} className="p-3 bg-indigo-50 text-indigo-500 rounded-2xl hover:bg-indigo-100 transition-colors"><Edit2 size={20} /></button>
-                        <button onClick={() => removeShift(shift.id)} className="p-3 bg-red-50 text-red-300 rounded-2xl hover:bg-red-100 transition-colors"><Trash2 size={20} /></button>
-                      </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => startEditingShift(shift)} className="p-3 bg-indigo-50 text-indigo-500 rounded-2xl hover:bg-indigo-100 transition-colors"><Edit2 size={20} /></button>
+                      <button onClick={() => removeShift(shift.id)} className="p-3 bg-red-50 text-red-300 rounded-2xl hover:bg-red-100 transition-colors"><Trash2 size={20} /></button>
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                  </div>
+              </div>
+            ))}
           </div>
         )}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-200 px-6 pt-3 pb-8 flex justify-between items-center z-50 max-w-md mx-auto">
-        <button 
-          onClick={() => setActiveTab('open')}
-          className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'open' ? 'text-rose-500 scale-110' : 'text-slate-400'}`}
-        >
+        <button onClick={() => setActiveTab('open')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'open' ? 'text-rose-500 scale-110' : 'text-slate-400'}`}>
           <div className={`p-2 rounded-2xl ${activeTab === 'open' ? 'bg-rose-50 shadow-inner' : ''}`}>
-            <Calendar size={28} strokeWidth={activeTab === 'open' ? 3 : 2} />
+            <Calendar size={28} />
           </div>
           <span className="text-[10px] font-black uppercase">עזרה</span>
         </button>
-        <button 
-          onClick={() => setActiveTab('mine')}
-          className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'mine' ? 'text-rose-500 scale-110' : 'text-slate-400'}`}
-        >
+        <button onClick={() => setActiveTab('mine')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'mine' ? 'text-rose-500 scale-110' : 'text-slate-400'}`}>
           <div className={`p-2 rounded-2xl ${activeTab === 'mine' ? 'bg-rose-50 shadow-inner' : ''}`}>
-            <CheckCircle size={28} strokeWidth={activeTab === 'mine' ? 3 : 2} />
+            <CheckCircle size={28} />
           </div>
           <span className="text-[10px] font-black uppercase">המשימות שלי</span>
         </button>
         {currentUser.isAdmin && (
-          <button 
-            onClick={() => setActiveTab('admin')}
-            className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'admin' ? 'text-indigo-500 scale-110' : 'text-slate-400'}`}
-          >
+          <button onClick={() => setActiveTab('admin')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'admin' ? 'text-indigo-500 scale-110' : 'text-slate-400'}`}>
             <div className={`p-2 rounded-2xl ${activeTab === 'admin' ? 'bg-indigo-50 shadow-inner' : ''}`}>
-              <Settings size={28} strokeWidth={activeTab === 'admin' ? 3 : 2} />
+              <Settings size={28} />
             </div>
             <span className="text-[10px] font-black uppercase">ניהול</span>
           </button>

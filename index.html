@@ -20,12 +20,15 @@
       -webkit-tap-highlight-color: transparent;
       margin: 0;
       background-color: #f8fafc;
+      color: #1e293b;
     }
     #root { min-height: 100vh; }
-    .animate-in { animation: fadeIn 0.3s ease-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-in { animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
     .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
     ::-webkit-scrollbar { display: none; }
+    * { outline: none !important; }
+    .glass-effect { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); }
   </style>
 
   <script type="importmap">
@@ -47,7 +50,7 @@
   <script type="text/babel" data-type="module">
     import React, { useState, useEffect, useMemo } from 'react';
     import ReactDOM from 'react-dom/client';
-    import { Plane, Heart, Clock, Calendar, CheckCircle, RefreshCw, Car, Utensils, Moon, Settings, BarChart, Trash2, Plus, Edit2, X, Save, Share2, Info } from 'lucide-react';
+    import { Plane, Heart, Clock, Calendar, CheckCircle, RefreshCw, Car, Utensils, Moon, Settings, BarChart, Trash2, Plus, Edit2, X, Save, Share2, Info, ChevronLeft } from 'lucide-react';
     import { GoogleGenAI, Type } from "@google/genai";
 
     const FAMILY_MEMBERS = [
@@ -78,22 +81,22 @@
       const [editTaskForm, setEditTaskForm] = useState({});
 
       useEffect(() => {
-        const s = localStorage.getItem('family_alma_v10');
-        const t = localStorage.getItem('tasks_alma_v10');
+        const s = localStorage.getItem('family_alma_v12');
+        const t = localStorage.getItem('tasks_alma_v12');
         if (s) try { setShifts(JSON.parse(s)); } catch(e) { setShifts([]); }
         if (t) try { setTasks(JSON.parse(t)); } catch(e) { setTasks([]); }
       }, []);
 
       useEffect(() => {
-        localStorage.setItem('family_alma_v10', JSON.stringify(shifts));
-        localStorage.setItem('tasks_alma_v10', JSON.stringify(tasks));
+        localStorage.setItem('family_alma_v12', JSON.stringify(shifts));
+        localStorage.setItem('tasks_alma_v12', JSON.stringify(tasks));
       }, [shifts, tasks]);
 
       const handleSync = async () => {
         setIsSyncing(true);
         try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const prompt = `נתח אירועים: "טיסת אל על LY315 ללונדון 25/10 ב-14:00, חזרה AF123 ב-28/10 ב-22:00". החזר JSON של טיסות ומשימות לעלמא (איסוף, ארוחה, מקלחת).`;
+          const prompt = `נתח אירועים: "טיסת אל על LY315 ללונדון 25/10 ב-14:00, חזרה AF123 ב-28/10 ב-22:00". החזר רשימת JSON של טיסות ומשימות לעלמא (איסוף, ארוחה, מקלחת).`;
           const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
             contents: prompt,
@@ -159,11 +162,11 @@
           setTasks(prev => [...newTasks, ...prev]);
         } catch (e) {
           console.error(e);
-          // Fallback simple sync if AI fails
+          // Fallback manual data if AI fails
           const id = Date.now();
-          const mockShift = { id: 's'+id, flightNumber: 'LY315', origin: 'TLV', destination: 'LHR', departureTime: '14:00', arrivalTime: '18:30', dateLabel: '25/10' };
+          const mockShift = { id: 's'+id, flightNumber: 'LY315', origin: 'TLV', destination: 'LHR', departureTime: '14:00', arrivalTime: '18:30', dateLabel: 'יום שישי 25/10' };
           setShifts(prev => [mockShift, ...prev]);
-          setTasks(prev => [{ id: 't'+id, shiftId: mockShift.id, taskType: 'איסוף', description: 'איסוף מהגן', time: '16:30', dateLabel: '25/10' }, ...prev]);
+          setTasks(prev => [{ id: 't'+id, shiftId: mockShift.id, taskType: 'איסוף', description: 'איסוף עלמא מהגן', time: '16:30', dateLabel: '25/10' }, ...prev]);
         } finally {
           setIsSyncing(false);
         }
@@ -172,91 +175,145 @@
       const claimTask = (tid) => setTasks(prev => prev.map(t => t.id === tid ? { ...t, assignedTo: currentUser.id } : t));
       const cancelTask = (tid) => setTasks(prev => prev.map(t => t.id === tid ? { ...t, assignedTo: undefined } : t));
       const deleteShift = (sid) => {
-        if(confirm('למחוק טיסה?')) {
+        if(window.confirm('למחוק את הטיסה ואת כל המשימות?')) {
           setShifts(prev => prev.filter(s => s.id !== sid));
           setTasks(prev => prev.filter(t => t.shiftId !== sid));
         }
       };
 
+      const saveShiftEdit = () => {
+        setShifts(prev => prev.map(s => s.id === editingShiftId ? { ...s, ...editShiftForm } : s));
+        setEditingShiftId(null);
+      };
+
+      const saveTaskEdit = () => {
+        setTasks(prev => prev.map(t => t.id === editingTaskId ? { ...t, ...editTaskForm } : t));
+        setEditingTaskId(null);
+      };
+
       return (
-        <div className="flex flex-col h-screen bg-slate-50 max-w-[450px] mx-auto shadow-2xl overflow-hidden relative">
+        <div className="flex flex-col h-screen bg-slate-50 max-w-[450px] mx-auto shadow-2xl overflow-hidden relative border-x border-slate-200">
           
+          {/* Header */}
           <header className="bg-rose-500 pt-10 pb-6 px-6 text-white shadow-lg shrink-0 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-10 rounded-full -mr-16 -mt-16"></div>
             <div className="flex justify-between items-center relative z-10">
               <div className="flex items-center gap-3">
-                <Heart size={28} className="fill-white" />
-                <h1 className="text-2xl font-black tracking-tight">דואגים לעלמא</h1>
+                <div className="bg-white/20 p-2 rounded-2xl">
+                  <Heart size={28} className="fill-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-black tracking-tight leading-none">דואגים לעלמא</h1>
+                  <p className="text-[10px] font-bold opacity-70 mt-1 uppercase tracking-widest">Family Care Center</p>
+                </div>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setCurrentUser(FAMILY_MEMBERS[(FAMILY_MEMBERS.indexOf(currentUser)+1)%FAMILY_MEMBERS.length])} className="text-[10px] bg-rose-600 px-3 py-1.5 rounded-xl font-bold">החלף</button>
-                <button onClick={handleSync} disabled={isSyncing} className="bg-rose-400 p-2.5 rounded-full shadow-lg">
+                <button onClick={() => setCurrentUser(FAMILY_MEMBERS[(FAMILY_MEMBERS.indexOf(currentUser)+1)%FAMILY_MEMBERS.length])} className="text-[10px] bg-rose-600 px-3 py-1.5 rounded-xl font-bold border border-rose-400 active:scale-95 transition-all">
+                  החלף פרופיל
+                </button>
+                <button onClick={handleSync} disabled={isSyncing} className="bg-rose-400 p-2.5 rounded-full shadow-xl active:scale-90 transition-all border border-rose-300">
                   <RefreshCw size={24} className={isSyncing ? 'animate-spin' : ''} />
                 </button>
               </div>
             </div>
           </header>
 
-          <div className="bg-white p-4 border-b flex items-center justify-between shrink-0 shadow-sm">
+          {/* User Bar */}
+          <div className="bg-white p-4 border-b flex items-center justify-between shrink-0 shadow-sm relative z-10">
             <div className="flex items-center gap-4">
-              <img src={currentUser.avatar} className="w-14 h-14 rounded-full border-4 border-rose-100 shadow-inner" />
+              <div className="relative">
+                <img src={currentUser.avatar} className="w-14 h-14 rounded-full border-4 border-rose-100 shadow-inner" />
+                <div className="absolute -bottom-1 -right-1 bg-emerald-500 w-4 h-4 rounded-full border-2 border-white shadow-sm"></div>
+              </div>
               <div>
                 <p className="font-black text-lg text-slate-800 leading-tight">שלום, {String(currentUser.name)}</p>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{String(currentUser.role)} במשמרת</p>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-none">{String(currentUser.role)} במשמרת</p>
               </div>
             </div>
             <div className="bg-rose-50 px-4 py-2.5 rounded-2xl text-center border border-rose-100">
-              <p className="text-[10px] font-black text-rose-400 uppercase">עזרת כבר</p>
+              <p className="text-[10px] font-black text-rose-400 uppercase leading-none mb-1">משימות</p>
               <p className="text-xl font-black text-rose-600 leading-none">{tasks.filter(t => t.assignedTo === currentUser.id).length}</p>
             </div>
           </div>
 
-          <main className="flex-1 overflow-y-auto p-4 space-y-6 pb-24">
+          <main className="flex-1 overflow-y-auto p-4 space-y-6 pb-24 bg-slate-50/50">
             {activeTab === 'open' && (
-              <div className="space-y-4 animate-in">
-                <h2 className="text-xl font-black text-slate-800 px-2">מתי עלמא צריכה עזרה?</h2>
+              <div className="space-y-5 animate-in">
+                <div className="flex items-center justify-between px-2">
+                  <div className="flex items-center gap-2 text-slate-800">
+                    <Calendar className="text-rose-500" size={20} />
+                    <h2 className="text-xl font-black">מתי עלמא צריכה עזרה?</h2>
+                  </div>
+                </div>
+
                 {shifts.length === 0 && !isSyncing && (
-                  <div className="text-center py-20 bg-white rounded-[40px] border-2 border-dashed border-slate-200 opacity-50">
-                    <Plane size={40} className="mx-auto mb-2 text-slate-300" />
-                    <p className="font-bold">אין טיסות כרגע</p>
+                  <div className="text-center py-20 bg-white rounded-[40px] border-2 border-dashed border-slate-200">
+                    <Plane size={48} className="mx-auto mb-4 text-slate-200" />
+                    <p className="text-slate-400 font-bold text-lg">אין טיסות באופק...</p>
+                    <p className="text-xs text-slate-300">היומן של אמא ריק. תיהנו!</p>
                   </div>
                 )}
+
                 {shifts.map(shift => (
-                  <div key={shift.id} className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-200 space-y-5">
+                  <div key={shift.id} className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-200 space-y-5 transition-all hover:shadow-md">
                     <div className="bg-rose-50 -mx-6 -mt-6 p-4 rounded-t-[32px] flex justify-between items-center border-b border-rose-100">
-                      <span className="text-xl font-black text-rose-600">{String(shift.dateLabel)}</span>
-                      <span className="text-[10px] font-black text-slate-400 uppercase">טיסה {String(shift.flightNumber)}</span>
+                      <div className="flex items-center gap-3">
+                        <Clock size={16} className="text-rose-500" />
+                        <span className="text-lg font-black text-rose-600">{String(shift.dateLabel)}</span>
+                      </div>
+                      <span className="text-[10px] font-black text-slate-400 uppercase bg-white px-3 py-1 rounded-full border border-slate-100">
+                        {String(shift.flightNumber)}
+                      </span>
                     </div>
+
                     <div className="flex items-center justify-between text-center py-2">
                       <div className="flex-1">
-                        <p className="text-2xl font-black">{String(shift.origin)}</p>
-                        <p className="text-xs text-slate-400 font-bold">{String(shift.departureTime)}</p>
+                        <p className="text-2xl font-black text-slate-800 tracking-tighter">{String(shift.origin)}</p>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">המראה: {String(shift.departureTime)}</p>
                       </div>
-                      <Plane className="text-rose-200 rotate-180" size={20} />
+                      <div className="flex flex-col items-center px-4 relative flex-none">
+                        <div className="w-16 h-px bg-slate-100 relative">
+                          <Plane className="absolute left-1/2 -top-[9px] -translate-x-1/2 text-rose-300 rotate-180" size={18} />
+                        </div>
+                      </div>
                       <div className="flex-1">
-                        <p className="text-2xl font-black">{String(shift.destination)}</p>
-                        <p className="text-xs text-slate-400 font-bold">{String(shift.arrivalTime)}</p>
+                        <p className="text-2xl font-black text-slate-800 tracking-tighter">{String(shift.destination)}</p>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">נחיתה: {String(shift.arrivalTime)}</p>
                       </div>
                     </div>
+
                     <div className="space-y-3">
                       {tasks.filter(t => t.shiftId === shift.id).map(task => (
-                        <div key={task.id} className="bg-slate-50 p-4 rounded-3xl border border-slate-100">
+                        <div key={task.id} className="bg-slate-50 p-4 rounded-3xl border border-slate-100 transition-all">
                           <div className="flex items-center gap-4 mb-3">
-                            <div className="p-3 bg-white rounded-2xl shadow-sm">{getTaskIcon(task.taskType)}</div>
+                            <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-100">{getTaskIcon(task.taskType)}</div>
                             <div className="flex-1">
-                              <p className="font-black text-slate-800">{String(task.description)}</p>
-                              <p className="text-xs text-slate-400 font-bold">{String(task.time)}</p>
+                              <p className="font-black text-slate-800 leading-tight">{String(task.description)}</p>
+                              <p className="text-xs text-slate-400 font-bold mt-1 flex items-center gap-1">
+                                <Clock size={12}/> {String(task.time)}
+                              </p>
                             </div>
                           </div>
                           {task.assignedTo ? (
-                            <div className="bg-emerald-50 p-3 rounded-2xl flex items-center justify-between border border-emerald-100">
-                              <div className="flex items-center gap-2">
-                                <img src={FAMILY_MEMBERS.find(f => f.id === task.assignedTo)?.avatar} className="w-8 h-8 rounded-full border border-white" />
-                                <span className="text-xs font-black text-emerald-700">{FAMILY_MEMBERS.find(f => f.id === task.assignedTo)?.name} עוזר!</span>
+                            <div className="bg-emerald-50 p-3 rounded-2xl flex items-center justify-between border border-emerald-100 animate-in">
+                              <div className="flex items-center gap-3">
+                                <img src={FAMILY_MEMBERS.find(f => f.id === task.assignedTo)?.avatar} className="w-9 h-9 rounded-full border-2 border-white shadow-sm" />
+                                <span className="text-xs font-black text-emerald-700">
+                                  {FAMILY_MEMBERS.find(f => f.id === task.assignedTo)?.name} כבר כאן!
+                                </span>
                               </div>
-                              {task.assignedTo === currentUser.id && <button onClick={() => cancelTask(task.id)} className="text-xs font-black text-red-500">ביטול</button>}
+                              {task.assignedTo === currentUser.id && (
+                                <button onClick={() => cancelTask(task.id)} className="text-[10px] font-black text-red-500 underline decoration-2 underline-offset-4">ביטול</button>
+                              )}
                             </div>
                           ) : (
-                            <button onClick={() => claimTask(task.id)} className="w-full py-4 bg-emerald-500 text-white rounded-[20px] font-black text-xl shadow-lg shadow-emerald-100">אני אעזור!</button>
+                            <button 
+                              onClick={() => claimTask(task.id)} 
+                              className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-[24px] font-black text-xl shadow-xl shadow-emerald-100 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                            >
+                              <Plus size={20} />
+                              אני אעזור כאן!
+                            </button>
                           )}
                         </div>
                       ))}
@@ -268,17 +325,26 @@
 
             {activeTab === 'mine' && (
               <div className="space-y-4 animate-in">
-                <h2 className="text-xl font-black text-slate-800 px-2">המשימות שלי</h2>
+                <div className="flex items-center gap-2 px-2">
+                  <CheckCircle className="text-emerald-500" size={24} />
+                  <h2 className="text-xl font-black text-slate-800">המשימות שלי עם עלמא</h2>
+                </div>
                 {tasks.filter(t => t.assignedTo === currentUser.id).length === 0 ? (
-                  <p className="text-center py-20 text-slate-400 font-bold">עוד לא בחרת משימות...</p>
+                  <div className="text-center py-20 bg-white rounded-[40px] border-2 border-dashed border-slate-200">
+                    <Heart size={48} className="mx-auto mb-4 text-slate-100" />
+                    <p className="text-slate-400 font-black">עוד לא נרשמת לכלום...</p>
+                    <p className="text-xs text-slate-300 mt-2 px-10">חזרו לדף הלו"ז ובחרו מתי תרצו להיות עם עלמא!</p>
+                  </div>
                 ) : (
                   tasks.filter(t => t.assignedTo === currentUser.id).map(t => (
-                    <div key={t.id} className="bg-white p-5 rounded-[32px] shadow-sm border-r-[12px] border-emerald-500 flex justify-between items-center">
+                    <div key={t.id} className="bg-white p-6 rounded-[32px] shadow-sm border-r-[12px] border-emerald-500 flex justify-between items-center hover:scale-[1.02] transition-transform">
                       <div>
-                        <p className="text-xs text-slate-400 font-black mb-1">{String(t.dateLabel)} • {String(t.time)}</p>
-                        <p className="text-lg font-black text-slate-800">{String(t.description)}</p>
+                        <p className="text-[10px] text-slate-400 font-black uppercase mb-1">{String(t.dateLabel)} • {String(t.time)}</p>
+                        <p className="text-xl font-black text-slate-800 tracking-tight">{String(t.description)}</p>
                       </div>
-                      <button onClick={() => cancelTask(t.id)} className="text-red-300 p-2"><Trash2 /></button>
+                      <button onClick={() => cancelTask(t.id)} className="bg-red-50 p-4 rounded-2xl text-red-300 hover:text-red-500 transition-colors">
+                        <Trash2 size={24} />
+                      </button>
                     </div>
                   ))
                 )}
@@ -287,51 +353,126 @@
 
             {activeTab === 'admin' && currentUser.isAdmin && (
               <div className="space-y-6 animate-in">
-                <h2 className="text-xl font-black text-slate-800 px-2 flex items-center gap-2"><Settings size={20}/> ניהול מערכת</h2>
-                {shifts.map(s => (
-                  <div key={s.id} className="bg-white p-4 rounded-[32px] border border-slate-200 flex justify-between items-center">
-                    <div>
-                      <p className="font-black">{String(s.flightNumber)} - {String(s.dateLabel)}</p>
-                      <p className="text-xs text-slate-400 font-bold">{String(s.origin)} ➔ {String(s.destination)}</p>
-                    </div>
-                    <button onClick={() => deleteShift(s.id)} className="p-3 bg-red-50 text-red-400 rounded-2xl"><Trash2 size={20}/></button>
+                <div className="flex items-center justify-between px-2">
+                  <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                    <Settings className="text-indigo-500" /> ניהול הורים
+                  </h2>
+                  <div className="bg-indigo-100 text-indigo-600 p-2 rounded-xl">
+                    <BarChart size={20} />
                   </div>
-                ))}
-                <div className="bg-white p-6 rounded-[32px] border border-slate-200 space-y-4 shadow-sm">
-                   <h3 className="font-black text-slate-800 uppercase text-xs flex items-center gap-2"><BarChart size={14}/> סטטיסטיקת עזרה</h3>
-                   {FAMILY_MEMBERS.map(member => {
-                     const count = tasks.filter(t => t.assignedTo === member.id).length;
-                     const total = tasks.length || 1;
-                     return (
-                       <div key={member.id} className="space-y-1">
-                          <div className="flex justify-between text-[10px] font-bold text-slate-500">
-                            <span>{String(member.name)}</span>
-                            <span>{count} משימות</span>
+                </div>
+
+                {/* Quick Stats */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-indigo-600 text-white p-5 rounded-[32px] shadow-xl relative overflow-hidden">
+                    <p className="text-[10px] font-black opacity-60 uppercase">טיסות</p>
+                    <p className="text-3xl font-black mt-1">{shifts.length}</p>
+                    <Plane className="absolute -bottom-2 -right-2 opacity-10" size={64} />
+                  </div>
+                  <div className="bg-emerald-600 text-white p-5 rounded-[32px] shadow-xl relative overflow-hidden">
+                    <p className="text-[10px] font-black opacity-60 uppercase">כיסוי</p>
+                    <p className="text-3xl font-black mt-1">
+                      {tasks.length > 0 ? Math.round((tasks.filter(t => t.assignedTo).length / tasks.length) * 100) : 0}%
+                    </p>
+                    <CheckCircle className="absolute -bottom-2 -right-2 opacity-10" size={64} />
+                  </div>
+                </div>
+
+                {/* Edit Section */}
+                <div className="space-y-4">
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">עריכת טיסות פעילות</p>
+                  {shifts.map(s => (
+                    <div key={s.id} className="bg-white p-5 rounded-[32px] border border-slate-200 shadow-sm space-y-4">
+                      {editingShiftId === s.id ? (
+                        <div className="space-y-3 animate-in">
+                          <input 
+                            value={editShiftForm.flightNumber} 
+                            onChange={e => setEditShiftForm({...editShiftForm, flightNumber: e.target.value})} 
+                            className="w-full bg-slate-50 p-4 rounded-2xl text-sm font-bold border border-slate-200 focus:ring-2 ring-indigo-500" 
+                            placeholder="מספר טיסה" 
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input value={editShiftForm.origin} onChange={e => setEditShiftForm({...editShiftForm, origin: e.target.value})} className="w-full bg-slate-50 p-4 rounded-2xl text-xs font-bold border" placeholder="מוצא" />
+                            <input value={editShiftForm.destination} onChange={e => setEditShiftForm({...editShiftForm, destination: e.target.value})} className="w-full bg-slate-50 p-4 rounded-2xl text-xs font-bold border" placeholder="יעד" />
                           </div>
-                          <div className="h-2 bg-slate-50 rounded-full overflow-hidden border">
-                             <div className="h-full bg-rose-500" style={{ width: `${(count/total)*100}%` }}></div>
+                          <div className="flex gap-2">
+                            <button onClick={saveShiftEdit} className="flex-1 bg-indigo-600 text-white p-4 rounded-2xl font-black text-sm shadow-lg">שמור</button>
+                            <button onClick={() => setEditingShiftId(null)} className="bg-slate-100 p-4 rounded-2xl"><X size={20}/></button>
                           </div>
-                       </div>
-                     );
-                   })}
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-black text-slate-800 text-lg leading-none">{String(s.flightNumber)}</p>
+                            <p className="text-[10px] text-slate-400 font-black mt-1 uppercase tracking-tighter">{String(s.dateLabel)} • {String(s.origin)} ➔ {String(s.destination)}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => { setEditingShiftId(s.id); setEditShiftForm(s); }} className="p-3 bg-indigo-50 text-indigo-500 rounded-2xl hover:bg-indigo-100"><Edit2 size={18}/></button>
+                            <button onClick={() => deleteShift(s.id)} className="p-3 bg-red-50 text-red-400 rounded-2xl hover:bg-red-100"><Trash2 size={18}/></button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Performance Chart */}
+                <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm space-y-5">
+                   <h3 className="font-black text-slate-800 uppercase text-xs flex items-center gap-2">
+                     <BarChart size={14} className="text-indigo-500" /> ביצועי משפחה
+                   </h3>
+                   <div className="space-y-6">
+                     {FAMILY_MEMBERS.map(member => {
+                       const count = tasks.filter(t => t.assignedTo === member.id).length;
+                       const total = tasks.length || 1;
+                       const percentage = (count / total) * 100;
+                       return (
+                         <div key={member.id} className="space-y-2">
+                            <div className="flex justify-between items-center text-xs font-black text-slate-600">
+                              <div className="flex items-center gap-3">
+                                <img src={member.avatar} className="w-8 h-8 rounded-full border border-slate-100 shadow-sm" />
+                                <span>{String(member.name)}</span>
+                              </div>
+                              <span className="bg-slate-50 px-3 py-1 rounded-full border border-slate-100">{count} משימות</span>
+                            </div>
+                            <div className="h-4 bg-slate-50 rounded-full overflow-hidden border border-slate-100 relative shadow-inner">
+                               <div className="h-full bg-rose-500 transition-all duration-1000 ease-out shadow-sm" style={{ width: `${percentage}%` }}></div>
+                            </div>
+                         </div>
+                       );
+                     })}
+                   </div>
                 </div>
               </div>
             )}
           </main>
 
-          <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200 px-8 pt-3 pb-8 flex justify-between items-center z-50 max-w-[450px] mx-auto safe-area-bottom">
-            <button onClick={() => setActiveTab('open')} className={`flex flex-col items-center gap-1 ${activeTab === 'open' ? 'text-rose-500' : 'text-slate-300'}`}>
+          {/* Navigation */}
+          <nav className="fixed bottom-0 left-0 right-0 glass-effect border-t border-slate-200 px-10 pt-4 pb-10 flex justify-between items-center z-50 max-w-[450px] mx-auto safe-area-bottom shadow-[0_-10px_30px_rgba(0,0,0,0.03)]">
+            <button 
+              onClick={() => setActiveTab('open')} 
+              className={`flex flex-col items-center gap-1 transition-all relative ${activeTab === 'open' ? 'text-rose-500 scale-110' : 'text-slate-300'}`}
+            >
               <Calendar size={28} strokeWidth={activeTab === 'open' ? 3 : 2} />
-              <span className="text-[10px] font-black uppercase">עזרה</span>
+              <span className="text-[10px] font-black uppercase">לו"ז</span>
+              {activeTab === 'open' && <div className="absolute -bottom-2 w-1 h-1 bg-rose-500 rounded-full"></div>}
             </button>
-            <button onClick={() => setActiveTab('mine')} className={`flex flex-col items-center gap-1 ${activeTab === 'mine' ? 'text-rose-500' : 'text-slate-300'}`}>
+            <button 
+              onClick={() => setActiveTab('mine')} 
+              className={`flex flex-col items-center gap-1 transition-all relative ${activeTab === 'mine' ? 'text-rose-500 scale-110' : 'text-slate-300'}`}
+            >
               <CheckCircle size={28} strokeWidth={activeTab === 'mine' ? 3 : 2} />
               <span className="text-[10px] font-black uppercase">שלי</span>
+              {activeTab === 'mine' && <div className="absolute -bottom-2 w-1 h-1 bg-rose-500 rounded-full"></div>}
             </button>
             {currentUser.isAdmin && (
-              <button onClick={() => setActiveTab('admin')} className={`flex flex-col items-center gap-1 ${activeTab === 'admin' ? 'text-indigo-500' : 'text-slate-300'}`}>
+              <button 
+                onClick={() => setActiveTab('admin')} 
+                className={`flex flex-col items-center gap-1 transition-all relative ${activeTab === 'admin' ? 'text-indigo-500 scale-110' : 'text-slate-300'}`}
+              >
                 <Settings size={28} strokeWidth={activeTab === 'admin' ? 3 : 2} />
                 <span className="text-[10px] font-black uppercase">ניהול</span>
+                {activeTab === 'admin' && <div className="absolute -bottom-2 w-1 h-1 bg-indigo-500 rounded-full"></div>}
               </button>
             )}
           </nav>

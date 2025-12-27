@@ -62,6 +62,7 @@
 
     const FAMILY_KEY = "ALMA2024";
     const API_URL = "https://script.google.com/macros/s/AKfycbz1YFgrYz91xz9NoL_ZptsYF5tgjB_okj_DjXNbbePp66E_hxXoz2E9ON6Tt-iEoJM/exec";
+    const SESSION_KEY = "user";
 
     const DEFAULT_ALMA_TASKS = [
       { description: 'איסוף מהגן', time: '16:30' },
@@ -71,8 +72,17 @@
     ];
 
     const App = () => {
-      const [isAuthorized, setIsAuthorized] = useState(false);
-      const [currentUser, setCurrentUser] = useState(null);
+      // PERSISTENT INITIALIZATION: Get user identity from localStorage immediately
+      const [currentUser, setCurrentUser] = useState(() => {
+        try {
+          const saved = localStorage.getItem(SESSION_KEY);
+          return saved ? JSON.parse(saved) : null;
+        } catch (e) {
+          return null;
+        }
+      });
+      const [isAuthorized, setIsAuthorized] = useState(() => !!localStorage.getItem(SESSION_KEY));
+
       const [members, setMembers] = useState([
         { id: 'm1', name: 'אמא', role: 'אמא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mom', isAdmin: true },
         { id: 'f1', name: 'אבא', role: 'אבא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dad', isAdmin: true },
@@ -84,7 +94,6 @@
       const [isSyncing, setIsSyncing] = useState(false);
       const [isCloudLoading, setIsCloudLoading] = useState(true);
       
-      const isInitialMount = useRef(true);
       const [adminView, setAdminView] = useState('dashboard');
       const [drafts, setDrafts] = useState(null);
       const [editingShift, setEditingShift] = useState(null);
@@ -100,56 +109,64 @@
           const cloudData = await response.json();
           
           if (cloudData) {
-            // Mapping flights (raw arrays to objects)
+            // MAPPING: Simple strings, do not skip first row
             const flightRows = cloudData.flights || [];
-            if (flightRows.length > 0) {
-              // Only skip first row if it's strictly the header "id"
-              const startIdx = (flightRows[0][0] === "id") ? 1 : 0;
-              const dataRows = flightRows.slice(startIdx);
-              
-              const mappedShifts = dataRows.map(row => ({
-                id: String(row[0] || ''),
-                flightNumber: String(row[1] || ''),
-                origin: String(row[2] || ''),
-                destination: String(row[3] || ''),
-                departureDate: String(row[4] || ''),
-                arrivalDate: String(row[5] || ''),
-                pickupTime: String(row[6] || ''),
-                departureTime: String(row[7] || ''),
-                landingTime: String(row[8] || ''),
-                returnHomeTime: String(row[9] || ''),
-                isLayover: row[10] === true || row[10] === "TRUE" || row[10] === 1
-              }));
-              setShifts(mappedShifts);
-            }
+            const mappedShifts = flightRows.map(row => ({
+              id: String(row[0] || ''),
+              flightNumber: String(row[1] || ''),
+              origin: String(row[2] || ''),
+              destination: String(row[3] || ''),
+              departureDate: String(row[4] || ''),
+              arrivalDate: String(row[5] || ''),
+              pickupTime: String(row[6] || ''),
+              departureTime: String(row[7] || ''),
+              landingTime: String(row[8] || ''),
+              returnHomeTime: String(row[9] || ''),
+              isLayover: row[10] === true || row[10] === "TRUE" || row[10] === 1
+            }));
+            setShifts(mappedShifts);
 
-            // Mapping tasks (raw arrays to objects)
+            // TASK MAPPING: assignedTo is at index 5
             const taskRows = cloudData.tasks || [];
-            if (taskRows.length > 0) {
-              const startIdx = (taskRows[0][0] === "id") ? 1 : 0;
-              const dataRows = taskRows.slice(startIdx);
-              
-              const mappedTasks = dataRows.map(row => ({
-                id: String(row[0] || ''),
-                shiftId: String(row[1] || ''),
-                description: String(row[2] || ''),
-                time: String(row[3] || ''),
-                dateLabel: String(row[4] || ''),
-                assignedTo: row[5] ? String(row[5]) : null
-              }));
-              setTasks(mappedTasks);
-            }
+            const mappedTasks = taskRows.map(row => ({
+              id: String(row[0] || ''),
+              shiftId: String(row[1] || ''),
+              description: String(row[2] || ''),
+              time: String(row[3] || ''),
+              dateLabel: String(row[4] || ''),
+              assignedTo: row[5] ? String(row[5]) : ""
+            }));
+            setTasks(mappedTasks);
           }
         } catch (err) {
           console.error("Load Data Error:", err);
         } finally {
           setIsCloudLoading(false);
           setIsSyncing(false);
-          isInitialMount.current = false;
         }
       };
 
-      const saveFlight = async (flightData, tasksData) => {
+      const syncAllTasksToCloud = async (currentTasks) => {
+        setIsSyncing(true);
+        try {
+          await fetch(API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify({
+              action: "syncTasks",
+              tasks: currentTasks
+            }),
+            headers: { 'Content-Type': 'text/plain' }
+          });
+          console.log("Cloud Sync Success");
+        } catch (err) {
+          console.error("Sync Error:", err);
+        } finally {
+          setIsSyncing(false);
+        }
+      };
+
+      const saveFullFlightToCloud = async (flightData, tasksData) => {
         setIsSyncing(true);
         try {
           await fetch(API_URL, {
@@ -162,22 +179,15 @@
             }),
             headers: { 'Content-Type': 'text/plain' }
           });
-          alert("הנתונים נשמרו בהצלחה בענן המשפחתי");
-          loadData(); 
+          loadData();
         } catch (err) {
           console.error("Save Flight Error:", err);
-          alert("שגיאה בסנכרון לענן");
         } finally {
-          setTimeout(() => setIsSyncing(false), 1000);
+          setIsSyncing(false);
         }
       };
 
       useEffect(() => {
-        const session = localStorage.getItem('alma_session_v9');
-        if (session) {
-          setIsAuthorized(true);
-          setCurrentUser(JSON.parse(session));
-        }
         loadData();
       }, []);
 
@@ -204,15 +214,38 @@
         }
       };
 
+      // LOGIN ACTION: Persist to localStorage
       const handleLogin = (member) => {
         if (keyInput.toUpperCase() === FAMILY_KEY) {
           setCurrentUser(member);
           setIsAuthorized(true);
-          localStorage.setItem('alma_session_v9', JSON.stringify(member));
+          localStorage.setItem(SESSION_KEY, JSON.stringify(member));
           setAuthError("");
         } else {
           setAuthError("מפתח משפחתי שגוי");
         }
+      };
+
+      // LOGOUT ACTION: Remove from localStorage
+      const handleLogout = () => {
+        localStorage.removeItem(SESSION_KEY);
+        setCurrentUser(null);
+        setIsAuthorized(false);
+        window.location.reload();
+      };
+
+      const claimTask = (tid) => {
+        if (!currentUser) return;
+        const updatedTasks = tasks.map(t => t.id === tid ? { ...t, assignedTo: currentUser.id } : t);
+        setTasks(updatedTasks);
+        syncAllTasksToCloud(updatedTasks);
+      };
+
+      const unclaimTask = (tid) => {
+        if (!currentUser) return;
+        const updatedTasks = tasks.map(t => t.id === tid ? { ...t, assignedTo: "" } : t);
+        setTasks(updatedTasks);
+        syncAllTasksToCloud(updatedTasks);
       };
 
       const handleSmartImport = async () => {
@@ -252,48 +285,17 @@
             description: t.description,
             time: t.time,
             dateLabel: t.date,
-            assignedTo: null
+            assignedTo: ""
           }));
-          saveFlight(currentFlightData, currentTasksData);
+          saveFullFlightToCloud(currentFlightData, currentTasksData);
         });
         setDrafts(null);
         setAdminView('dashboard');
       };
 
       const saveFullFlightHandler = () => {
-        saveFlight(editingShift, editingTasks);
+        saveFullFlightToCloud(editingShift, editingTasks);
         setAdminView('dashboard');
-      };
-
-      const generateDefaultTasksForEditing = () => {
-        const days = getDaysBetween(editingShift.departureDate, editingShift.arrivalDate);
-        const newTasks = [];
-        days.forEach(day => DEFAULT_ALMA_TASKS.forEach((template, i) => {
-          newTasks.push({ id: `t-gen-${day}-${i}-${Date.now()}`, shiftId: editingShift.id, description: template.description, time: template.time, dateLabel: day, assignedTo: null });
-        }));
-        setEditingTasks(newTasks);
-      };
-
-      const claimTask = (tid) => {
-        const updatedTasks = tasks.map(t => t.id === tid ? { ...t, assignedTo: currentUser.id } : t);
-        setTasks(updatedTasks);
-        fetch(API_URL, {
-          method: 'POST',
-          mode: 'no-cors',
-          body: JSON.stringify({ action: "syncTasks", tasks: updatedTasks }),
-          headers: { 'Content-Type': 'text/plain' }
-        });
-      };
-
-      const unclaimTask = (tid) => {
-        const updatedTasks = tasks.map(t => t.id === tid ? { ...t, assignedTo: null } : t);
-        setTasks(updatedTasks);
-        fetch(API_URL, {
-          method: 'POST',
-          mode: 'no-cors',
-          body: JSON.stringify({ action: "syncTasks", tasks: updatedTasks }),
-          headers: { 'Content-Type': 'text/plain' }
-        });
       };
 
       const Header = () => (
@@ -303,14 +305,14 @@
                  <div className="bg-white/20 p-2.5 rounded-2xl shadow-inner"><Heart size={26} className="fill-white" /></div>
                  <div>
                     <h1 className="text-xl font-black tracking-tight leading-none">דואגים לעלמא</h1>
-                    <p className="text-[9px] font-bold opacity-70 mt-1 uppercase tracking-tighter">Shared Family Cloud</p>
+                    <p className="text-[9px] font-bold opacity-70 mt-1 uppercase tracking-tighter">Connected to Google Sheets</p>
                  </div>
               </div>
               <div className="flex items-center gap-2">
                  <button onClick={() => loadData(true)} disabled={isSyncing} className="p-2.5 rounded-xl border border-white/20 active:scale-90 transition-all">
                    <RefreshCw size={20} className={isSyncing ? 'animate-spin' : ''} />
                  </button>
-                 <button onClick={() => { localStorage.removeItem('alma_session_v9'); window.location.reload(); }} className="bg-rose-600 p-2.5 rounded-xl border border-white/20 active:scale-90 transition-all">
+                 <button onClick={handleLogout} className="bg-rose-600 p-2.5 rounded-xl border border-white/20 active:scale-90 transition-all">
                    <LogIn size={20} className="rotate-180" />
                  </button>
               </div>
@@ -370,6 +372,25 @@
       return (
         <div className="flex flex-col h-screen bg-slate-50 max-w-[450px] mx-auto shadow-2xl overflow-hidden relative border-x border-slate-200">
           <Header />
+          
+          {/* USER IDENTITY BAR: Restored profile display */}
+          <div className="bg-white p-4 border-b flex items-center justify-between shrink-0 shadow-sm relative z-10">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <img src={currentUser?.avatar} className="w-12 h-12 rounded-full border-4 border-rose-100 shadow-inner" />
+                <div className="absolute -bottom-1 -right-1 bg-emerald-500 w-3.5 h-3.5 rounded-full border-2 border-white"></div>
+              </div>
+              <div>
+                <p className="font-black text-md text-slate-800 leading-tight">שלום, {currentUser?.name}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{currentUser?.role} מחובר/ת</p>
+              </div>
+            </div>
+            <div className="bg-rose-50 px-3 py-1.5 rounded-2xl text-center border border-rose-100">
+              <p className="text-[9px] font-black text-rose-400 uppercase">משימות שלך</p>
+              <p className="text-lg font-black text-rose-600 leading-none">{tasks.filter(t => t.assignedTo === currentUser?.id).length}</p>
+            </div>
+          </div>
+
           <main className="flex-1 overflow-y-auto p-4 space-y-6 pb-32 no-scrollbar">
             {activeTab === 'open' && (
               <div className="space-y-6 animate-in">
@@ -400,8 +421,8 @@
                                 </div>
                                 {t.assignedTo ? (
                                    <div className="flex items-center gap-2 bg-emerald-100/50 pr-1 pl-3 py-1 rounded-full border border-emerald-100">
-                                      <img src={members.find(m => m.id === t.assignedTo)?.avatar} className="w-8 h-8 rounded-full border-white" />
-                                      {t.assignedTo === currentUser.id && <button onClick={() => unclaimTask(t.id)} className="text-red-400 p-1"><X size={14}/></button>}
+                                      <img src={members.find(m => m.id === t.assignedTo)?.avatar} className="w-8 h-8 rounded-full border-white shadow-inner" />
+                                      {t.assignedTo === currentUser?.id && <button onClick={() => unclaimTask(t.id)} className="text-red-400 p-1"><X size={14}/></button>}
                                    </div>
                                 ) : (
                                    <button onClick={() => claimTask(t.id)} className="bg-emerald-500 text-white px-5 py-2.5 rounded-2xl text-[11px] font-black shadow-lg shadow-emerald-100 active:scale-95 transition-all">אני אבוא!</button>
@@ -418,7 +439,7 @@
             {activeTab === 'mine' && (
               <div className="space-y-5 animate-in">
                  <h2 className="text-2xl font-black text-slate-800 px-2 flex items-center gap-2"><CheckCircle size={28} className="text-emerald-500"/> המשימות שלי</h2>
-                 {tasks.filter(t => t.assignedTo === currentUser.id).length === 0 ? <div className="text-center py-20 premium-card text-slate-300 font-bold italic">טרם בחרת משימות...</div> : tasks.filter(t => t.assignedTo === currentUser.id).map(t => (
+                 {tasks.filter(t => t.assignedTo === currentUser?.id).length === 0 ? <div className="text-center py-20 premium-card text-slate-300 font-bold italic">טרם בחרת משימות...</div> : tasks.filter(t => t.assignedTo === currentUser?.id).map(t => (
                      <div key={t.id} className="premium-card p-6 border-r-[12px] border-emerald-500 flex justify-between items-center">
                         <div><p className="text-[10px] text-slate-400 font-black uppercase mb-1 tracking-tighter">{formatHeDate(t.dateLabel)} • {t.time}</p><p className="text-lg font-black text-slate-800 leading-tight">{t.description}</p></div>
                         <button onClick={() => unclaimTask(t.id)} className="bg-red-50 p-4 rounded-2xl text-red-300 hover:text-red-500 transition-all"><Trash2 size={22}/></button>
@@ -487,7 +508,7 @@
                        </div>
                     </div>
                     <div className="premium-card p-7 space-y-4">
-                       <div className="flex justify-between items-center border-b pb-3 mb-4"><h3 className="font-black text-indigo-600 text-xl tracking-tighter">משימות עזרה לעלמא</h3><button onClick={generateDefaultTasksForEditing} className="text-[9px] bg-indigo-50 px-2 py-1 rounded font-black uppercase text-indigo-400 border">ייצר ברירת מחדל</button></div>
+                       <div className="flex justify-between items-center border-b pb-3 mb-4"><h3 className="font-black text-indigo-600 text-xl tracking-tighter">משימות עזרה לעלמא</h3><button onClick={() => setEditingTasks(getDaysBetween(editingShift.departureDate, editingShift.arrivalDate).flatMap(day => DEFAULT_ALMA_TASKS.map((t, i) => ({ id: `t-gen-${day}-${i}-${Date.now()}`, shiftId: editingShift.id, description: t.description, time: t.time, dateLabel: day, assignedTo: "" }))))} className="text-[9px] bg-indigo-50 px-2 py-1 rounded font-black uppercase text-indigo-400 border">ייצר ברירת מחדל</button></div>
                        <div className="space-y-3">
                           {editingTasks.map(t => (
                              <div key={t.id} className="bg-slate-50 p-3 rounded-2xl space-y-2 border relative">
@@ -496,7 +517,7 @@
                                 <div className="grid grid-cols-2 gap-2"><input type="date" value={t.dateLabel} onChange={e => setEditingTasks(editingTasks.map(x => x.id === t.id ? {...x, dateLabel: e.target.value} : x))} className="h-10 text-xs" /><input type="time" value={t.time} onChange={e => setEditingTasks(editingTasks.map(x => x.id === t.id ? {...x, time: e.target.value} : x))} className="h-10 text-xs" /></div>
                              </div>
                           ))}
-                          <button onClick={() => setEditingTasks([...editingTasks, { id: `t-new-${Date.now()}`, shiftId: editingShift.id, description: 'משימה חדשה', time: '16:00', dateLabel: editingShift.departureDate, assignedTo: null }])} className="w-full p-3 border-2 border-dashed rounded-2xl text-slate-300 font-black">+ הוסף משימה ידנית</button>
+                          <button onClick={() => setEditingTasks([...editingTasks, { id: `t-new-${Date.now()}`, shiftId: editingShift.id, description: 'משימה חדשה', time: '16:00', dateLabel: editingShift.departureDate, assignedTo: "" }])} className="w-full p-3 border-2 border-dashed rounded-2xl text-slate-300 font-black">+ הוסף משימה ידנית</button>
                        </div>
                     </div>
                   </div>

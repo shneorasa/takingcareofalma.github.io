@@ -60,7 +60,6 @@
     import { Plane, Heart, Clock, Calendar, CheckCircle, RefreshCw, Car, Utensils, Moon, Settings, Trash2, Plus, Edit2, X, Save, LogIn, Shield, Key, AlertTriangle, Users, ChevronLeft, MapPin, Sparkles, UserPlus, Info, Check, Trash } from 'lucide-react';
     import { GoogleGenAI, Type } from "@google/genai";
 
-    const FAMILY_KEY = "ALMA2024";
     const API_URL = "https://script.google.com/macros/s/AKfycbz1YFgrYz91xz9NoL_ZptsYF5tgjB_okj_DjXNbbePp66E_hxXoz2E9ON6Tt-iEoJM/exec";
     const SESSION_KEY = "user";
 
@@ -83,11 +82,7 @@
       });
       const [isAuthorized, setIsAuthorized] = useState(() => !!localStorage.getItem(SESSION_KEY));
 
-      const [members, setMembers] = useState([
-        { id: 'm1', name: 'אמא', role: 'אמא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mom', isAdmin: true },
-        { id: 'f1', name: 'אבא', role: 'אבא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dad', isAdmin: true },
-        { id: 'g1', name: 'סבתא', role: 'סבתא', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Grandma', isAdmin: false },
-      ]);
+      const [members, setMembers] = useState([]);
       const [shifts, setShifts] = useState([]);
       const [tasks, setTasks] = useState([]);
       const [activeTab, setActiveTab] = useState('open'); 
@@ -98,7 +93,9 @@
       const [drafts, setDrafts] = useState(null);
       const [editingShift, setEditingShift] = useState(null);
       const [editingTasks, setEditingTasks] = useState([]);
-      const [keyInput, setKeyInput] = useState("");
+      const [editingUser, setEditingUser] = useState(null);
+      const [passwordInput, setPasswordInput] = useState("");
+      const [selectedMemberId, setSelectedMemberId] = useState("");
       const [authError, setAuthError] = useState("");
 
       const loadData = async (showLoader = false) => {
@@ -137,6 +134,18 @@
               assignedTo: row[5] ? String(row[5]) : ""
             }));
             setTasks(mappedTasks);
+
+            // USER MAPPING: [id, name, role, password, avatar, isAdmin]
+            const userRows = cloudData.users || [];
+            const mappedUsers = userRows.map(row => ({
+              id: String(row[0] || ''),
+              name: String(row[1] || ''),
+              role: String(row[2] || ''),
+              password: String(row[3] || ''),
+              avatar: String(row[4] || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(row[1] || 'User')),
+              isAdmin: row[5] === true || row[5] === "TRUE" || row[5] === 1
+            }));
+            setMembers(mappedUsers);
           }
         } catch (err) {
           console.error("Load Data Error:", err);
@@ -216,13 +225,25 @@
 
       // LOGIN ACTION: Persist to localStorage
       const handleLogin = (member) => {
-        if (keyInput.toUpperCase() === FAMILY_KEY) {
-          setCurrentUser(member);
+        if (!member) {
+          setAuthError("נא לבחור משתמש");
+          return;
+        }
+        if (!passwordInput || passwordInput.trim() === "") {
+          setAuthError("נא להזין סיסמה");
+          return;
+        }
+        if (passwordInput === member.password) {
+          // Don't store password in session
+          const { password, ...userWithoutPassword } = member;
+          setCurrentUser(userWithoutPassword);
           setIsAuthorized(true);
-          localStorage.setItem(SESSION_KEY, JSON.stringify(member));
+          localStorage.setItem(SESSION_KEY, JSON.stringify(userWithoutPassword));
           setAuthError("");
+          setPasswordInput("");
+          setSelectedMemberId("");
         } else {
-          setAuthError("מפתח משפחתי שגוי");
+          setAuthError("סיסמה שגויה");
         }
       };
 
@@ -298,6 +319,49 @@
         setAdminView('dashboard');
       };
 
+      const saveUserToCloud = async (userData) => {
+        setIsSyncing(true);
+        try {
+          await fetch(API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify({
+              action: editingUser ? "updateUser" : "createUser",
+              userData: userData
+            }),
+            headers: { 'Content-Type': 'text/plain' }
+          });
+          loadData();
+          setEditingUser(null);
+          setAdminView('users');
+        } catch (err) {
+          console.error("Save User Error:", err);
+        } finally {
+          setIsSyncing(false);
+        }
+      };
+
+      const deleteUserFromCloud = async (userId) => {
+        if (!confirm('למחוק משתמש? פעולה זו לא ניתנת לביטול.')) return;
+        setIsSyncing(true);
+        try {
+          await fetch(API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify({
+              action: "deleteUser",
+              userId: userId
+            }),
+            headers: { 'Content-Type': 'text/plain' }
+          });
+          loadData();
+        } catch (err) {
+          console.error("Delete User Error:", err);
+        } finally {
+          setIsSyncing(false);
+        }
+      };
+
       const Header = () => (
         <header className="bg-rose-500 pt-14 pb-6 px-6 text-white shadow-xl shrink-0 relative overflow-hidden">
            <div className="flex justify-between items-center relative z-10">
@@ -340,21 +404,62 @@
       );
 
       if (!isAuthorized) {
+        const selectedMember = members.find(m => m.id === selectedMemberId);
         return (
           <div className="flex flex-col h-screen bg-rose-500 items-center justify-center p-10 text-white animate-in relative overflow-hidden">
              <div className="bg-white/20 p-8 rounded-[50px] mb-8 shadow-2xl border border-white/20"><Shield size={70} className="fill-white" /></div>
              <h1 className="text-3xl font-black mb-1 tracking-tighter text-center">דואגים לעלמא</h1>
              <div className="w-full max-w-xs space-y-6 mt-6">
-                <input type="text" value={keyInput} onChange={e => setKeyInput(e.target.value)} placeholder="קוד משפחתי..." className="w-full bg-white/15 border-white/20 text-white placeholder:text-rose-200 text-center font-black h-14" />
-                {authError && <div className="bg-red-600/50 p-3 rounded-2xl text-[10px] font-bold text-center border border-red-400 animate-pulse">{authError}</div>}
-                <div className="grid grid-cols-2 gap-3">
-                  {members.map(m => (
-                    <button key={m.id} onClick={() => handleLogin(m)} className="bg-white/10 p-4 rounded-3xl border border-white/10 flex flex-col items-center gap-2">
-                      <img src={m.avatar} className="w-12 h-12 rounded-full border-2 border-white/20" />
-                      <span className="text-xs font-black">{m.name}</span>
-                    </button>
-                  ))}
-                </div>
+                {isCloudLoading ? (
+                  <div className="text-center py-8">
+                    <div className="loader w-8 h-8 mx-auto mb-4"></div>
+                    <p className="text-sm font-bold opacity-80">טוען משתמשים...</p>
+                  </div>
+                ) : members.length === 0 ? (
+                  <div className="text-center py-8 bg-white/10 p-6 rounded-3xl border border-white/20">
+                    <AlertTriangle size={40} className="mx-auto mb-4 opacity-80" />
+                    <p className="text-sm font-bold mb-2">אין משתמשים במערכת</p>
+                    <p className="text-xs opacity-70">נא להוסיף משתמשים דרך Google Sheets או ליצור משתמש ראשון דרך Apps Script</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      {members.map(m => (
+                        <button 
+                          key={m.id} 
+                          onClick={() => setSelectedMemberId(m.id)} 
+                          className={`p-4 rounded-3xl border flex flex-col items-center gap-2 transition-all ${
+                            selectedMemberId === m.id 
+                              ? 'bg-white/20 border-white/30 scale-105' 
+                              : 'bg-white/10 border-white/10'
+                          }`}
+                        >
+                          <img src={m.avatar} className="w-12 h-12 rounded-full border-2 border-white/20" />
+                          <span className="text-xs font-black">{m.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {selectedMember && (
+                      <>
+                        <input 
+                          type="password" 
+                          value={passwordInput} 
+                          onChange={e => setPasswordInput(e.target.value)} 
+                          onKeyPress={e => e.key === 'Enter' && handleLogin(selectedMember)}
+                          placeholder="הזן סיסמה..." 
+                          className="w-full bg-white/15 border-white/20 text-white placeholder:text-rose-200 text-center font-black h-14 rounded-2xl" 
+                        />
+                        <button 
+                          onClick={() => handleLogin(selectedMember)} 
+                          className="w-full bg-white/20 hover:bg-white/30 border border-white/30 text-white p-4 rounded-2xl font-black text-sm transition-all active:scale-95"
+                        >
+                          התחבר
+                        </button>
+                      </>
+                    )}
+                    {authError && <div className="bg-red-600/50 p-3 rounded-2xl text-[10px] font-bold text-center border border-red-400 animate-pulse">{authError}</div>}
+                  </>
+                )}
              </div>
           </div>
         );
@@ -422,6 +527,7 @@
                                 {t.assignedTo ? (
                                    <div className="flex items-center gap-2 bg-emerald-100/50 pr-1 pl-3 py-1 rounded-full border border-emerald-100">
                                       <img src={members.find(m => m.id === t.assignedTo)?.avatar} className="w-8 h-8 rounded-full border-white shadow-inner" />
+                                      <span className="text-xs font-black text-emerald-700">{members.find(m => m.id === t.assignedTo)?.name || t.assignedTo}</span>
                                       {t.assignedTo === currentUser?.id && <button onClick={() => unclaimTask(t.id)} className="text-red-400 p-1"><X size={14}/></button>}
                                    </div>
                                 ) : (
@@ -484,6 +590,69 @@
                          </div>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {adminView === 'users' && (
+                  <div className="space-y-6 animate-in">
+                    <div className="flex items-center justify-between">
+                      <button onClick={() => setAdminView('dashboard')} className="flex items-center gap-2 text-slate-400 font-bold px-2"><ChevronLeft size={20} /> חזרה</button>
+                      <button onClick={() => { setEditingUser({ id: `u-${Date.now()}`, name: '', role: '', password: '', avatar: '', isAdmin: false }); setAdminView('edit_user'); }} className="bg-emerald-500 text-white px-4 py-2 rounded-2xl font-black text-sm flex items-center gap-2"><UserPlus size={18}/> משתמש חדש</button>
+                    </div>
+                    {members.length === 0 ? (
+                      <div className="text-center py-20 premium-card text-slate-300 font-bold italic">אין משתמשים. הוסף משתמש ראשון.</div>
+                    ) : (
+                      members.map(m => (
+                        <div key={m.id} className="premium-card p-5 border-r-[10px] border-emerald-500 flex justify-between items-center">
+                          <div className="flex items-center gap-4">
+                            <img src={m.avatar} className="w-12 h-12 rounded-full border-2 border-emerald-100" />
+                            <div>
+                              <p className="font-black text-slate-800 leading-tight mb-1">{m.name} {m.isAdmin && <span className="text-[9px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded uppercase font-black">מנהל</span>}</p>
+                              <p className="text-[10px] text-slate-400 font-black tracking-tighter uppercase">{m.role}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => { setEditingUser({...m}); setAdminView('edit_user'); }} className="p-3 bg-emerald-50 text-emerald-500 rounded-2xl"><Edit2 size={20}/></button>
+                            <button onClick={() => deleteUserFromCloud(m.id)} className="p-3 bg-red-50 text-red-300 rounded-2xl"><Trash2 size={20}/></button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {adminView === 'edit_user' && editingUser && (
+                  <div className="space-y-6 animate-in pb-12 px-2">
+                    <div className="flex items-center justify-between">
+                      <button onClick={() => { setEditingUser(null); setAdminView('users'); }} className="text-slate-400 font-bold tracking-tighter flex items-center gap-2"><ChevronLeft size={20} /> ביטול</button>
+                      <button onClick={() => saveUserToCloud(editingUser)} className="bg-emerald-500 text-white px-6 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2"><Save size={18}/> שמור</button>
+                    </div>
+                    <div className="premium-card p-7 space-y-4">
+                      <h3 className="font-black text-slate-800 text-xl border-b pb-3 mb-4 tracking-tighter">נתוני משתמש</h3>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 uppercase block mb-2">שם</label>
+                          <input value={editingUser.name} onChange={e => setEditingUser({...editingUser, name: e.target.value})} placeholder="שם המשתמש" className="w-full" />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 uppercase block mb-2">תפקיד</label>
+                          <input value={editingUser.role} onChange={e => setEditingUser({...editingUser, role: e.target.value})} placeholder="תפקיד (אמא, אבא, סבתא וכו')" className="w-full" />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 uppercase block mb-2">סיסמה</label>
+                          <input type="password" value={editingUser.password} onChange={e => setEditingUser({...editingUser, password: e.target.value})} placeholder="סיסמה" className="w-full" />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 uppercase block mb-2">קישור לתמונה (Avatar URL)</label>
+                          <input value={editingUser.avatar} onChange={e => setEditingUser({...editingUser, avatar: e.target.value})} placeholder="https://api.dicebear.com/7.x/avataaars/svg?seed=Name" className="w-full text-xs" />
+                          {editingUser.avatar && <img src={editingUser.avatar} className="w-16 h-16 rounded-full border-2 border-slate-200 mt-2" alt="Preview" />}
+                        </div>
+                        <div className="flex items-center gap-3 pt-2">
+                          <input type="checkbox" checked={editingUser.isAdmin} onChange={e => setEditingUser({...editingUser, isAdmin: e.target.checked})} id="isAdmin" className="w-5 h-5" />
+                          <label htmlFor="isAdmin" className="text-sm font-black text-slate-800">הרשאות מנהל (גישה לפאנל ניהול)</label>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 

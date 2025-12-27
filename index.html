@@ -202,9 +202,32 @@
 
       const getDaysBetween = useCallback((startStr, endStr) => {
         if (!startStr || !endStr) return [];
+        
+        // Normalize date strings - handle different formats from Google Sheets
+        const normalizeDate = (dateStr) => {
+          if (!dateStr) return null;
+          // If already in YYYY-MM-DD format, return as is
+          if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            return dateStr;
+          }
+          // Try parsing as date and converting to YYYY-MM-DD
+          const date = new Date(dateStr);
+          if (isNaN(date.getTime())) return null;
+          return date.toISOString().split('T')[0];
+        };
+        
+        const startDate = normalizeDate(startStr);
+        const endDate = normalizeDate(endStr);
+        
+        if (!startDate || !endDate) return [];
+        
         const days = [];
-        let curr = new Date(startStr);
-        const last = new Date(endStr);
+        let curr = new Date(startDate);
+        const last = new Date(endDate);
+        
+        if (isNaN(curr.getTime()) || isNaN(last.getTime())) return [];
+        if (curr > last) return [];
+        
         while (curr <= last) {
           days.push(curr.toISOString().split('T')[0]);
           curr.setDate(curr.getDate() + 1);
@@ -320,22 +343,52 @@
       };
 
       const saveUserToCloud = async (userData) => {
+        // Validation
+        if (!userData.name || userData.name.trim() === '') {
+          alert('נא להזין שם משתמש');
+          return;
+        }
+        if (!userData.password || userData.password.trim() === '') {
+          alert('נא להזין סיסמה');
+          return;
+        }
+        if (!userData.role || userData.role.trim() === '') {
+          alert('נא להזין תפקיד');
+          return;
+        }
+        
+        // Check if user exists (for update vs create)
+        const userExists = members.some(m => m.id === userData.id);
+        const action = userExists ? "updateUser" : "createUser";
+        
         setIsSyncing(true);
         try {
+          // Ensure avatar has a default if empty
+          const userDataWithDefaults = {
+            ...userData,
+            avatar: userData.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(userData.name)}`,
+            isAdmin: userData.isAdmin || false
+          };
+          
           await fetch(API_URL, {
             method: 'POST',
             mode: 'no-cors',
             body: JSON.stringify({
-              action: editingUser ? "updateUser" : "createUser",
-              userData: userData
+              action: action,
+              userData: userDataWithDefaults
             }),
             headers: { 'Content-Type': 'text/plain' }
           });
-          loadData();
-          setEditingUser(null);
-          setAdminView('users');
+          
+          // Wait a bit for the write to complete, then reload
+          setTimeout(() => {
+            loadData(true);
+            setEditingUser(null);
+            setAdminView('users');
+          }, 500);
         } catch (err) {
           console.error("Save User Error:", err);
+          alert('שגיאה בשמירת משתמש. נא לנסות שוב.');
         } finally {
           setIsSyncing(false);
         }
@@ -582,11 +635,28 @@
                          <div><p className="font-black text-slate-800 leading-tight mb-1">{s.flightNumber} ➔ {s.destination}</p><p className="text-[10px] text-slate-400 font-black tracking-tighter uppercase">{formatHeDate(s.departureDate)}</p></div>
                          <div className="flex gap-2">
                             <button onClick={() => { setEditingShift({...s}); setEditingTasks(tasks.filter(t => t.shiftId === s.id)); setAdminView('edit_flight'); }} className="p-3 bg-indigo-50 text-indigo-500 rounded-2xl"><Edit2 size={20}/></button>
-                            <button onClick={() => { if(confirm('למחוק טיסה?')) { 
-                              fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: "deleteFlight", flightId: s.id }) });
-                              setShifts(shifts.filter(x => x.id !== s.id)); 
-                              setTasks(tasks.filter(t => t.shiftId !== s.id));
-                            } }} className="p-3 bg-red-50 text-red-300 rounded-2xl"><Trash2 size={20}/></button>
+                            <button onClick={async () => { 
+                              if(confirm('למחוק טיסה? פעולה זו תמחק גם את כל המשימות הקשורות לטיסה זו.')) { 
+                                setIsSyncing(true);
+                                try {
+                                  await fetch(API_URL, { 
+                                    method: 'POST', 
+                                    mode: 'no-cors', 
+                                    body: JSON.stringify({ action: "deleteFlight", flightId: s.id }),
+                                    headers: { 'Content-Type': 'text/plain' }
+                                  });
+                                  // Reload data from server to ensure sync
+                                  setTimeout(() => {
+                                    loadData(true);
+                                  }, 500);
+                                } catch (err) {
+                                  console.error("Delete Flight Error:", err);
+                                  alert('שגיאה במחיקת טיסה. נא לנסות שוב.');
+                                } finally {
+                                  setIsSyncing(false);
+                                }
+                              }
+                            }} className="p-3 bg-red-50 text-red-300 rounded-2xl" disabled={isSyncing}><Trash2 size={20}/></button>
                          </div>
                       </div>
                     ))}
@@ -666,8 +736,14 @@
                           <input value={editingShift.destination} onChange={e => setEditingShift({...editingShift, destination: e.target.value})} placeholder="יעד" />
                        </div>
                        <div className="grid grid-cols-2 gap-3">
-                          <input type="date" value={editingShift.departureDate} onChange={e => setEditingShift({...editingShift, departureDate: e.target.value})} />
-                          <input type="date" value={editingShift.arrivalDate} onChange={e => setEditingShift({...editingShift, arrivalDate: e.target.value})} />
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-400 uppercase block mb-2">תאריך יציאה</label>
+                            <input type="date" value={editingShift.departureDate} onChange={e => setEditingShift({...editingShift, departureDate: e.target.value})} />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-400 uppercase block mb-2">תאריך חזרה</label>
+                            <input type="date" value={editingShift.arrivalDate} onChange={e => setEditingShift({...editingShift, arrivalDate: e.target.value})} />
+                          </div>
                        </div>
                        <div className="bg-slate-50 p-4 rounded-3xl grid grid-cols-2 gap-3 border border-slate-100">
                           <div><label className="text-[9px] font-bold text-slate-400 uppercase">זמן יציאה מהבית</label><input type="time" value={editingShift.pickupTime} onChange={e => setEditingShift({...editingShift, pickupTime: e.target.value})} /></div>
@@ -677,7 +753,52 @@
                        </div>
                     </div>
                     <div className="premium-card p-7 space-y-4">
-                       <div className="flex justify-between items-center border-b pb-3 mb-4"><h3 className="font-black text-indigo-600 text-xl tracking-tighter">משימות עזרה לעלמא</h3><button onClick={() => setEditingTasks(getDaysBetween(editingShift.departureDate, editingShift.arrivalDate).flatMap(day => DEFAULT_ALMA_TASKS.map((t, i) => ({ id: `t-gen-${day}-${i}-${Date.now()}`, shiftId: editingShift.id, description: t.description, time: t.time, dateLabel: day, assignedTo: "" }))))} className="text-[9px] bg-indigo-50 px-2 py-1 rounded font-black uppercase text-indigo-400 border">ייצר ברירת מחדל</button></div>
+                       <div className="flex justify-between items-center border-b pb-3 mb-4"><h3 className="font-black text-indigo-600 text-xl tracking-tighter">משימות עזרה לעלמא</h3><button onClick={() => {
+                          if (!editingShift.departureDate || !editingShift.arrivalDate) {
+                            alert('נא להזין תאריכי יציאה וחזרה לפני יצירת משימות');
+                            return;
+                          }
+                          const days = getDaysBetween(editingShift.departureDate, editingShift.arrivalDate);
+                          if (days.length === 0) {
+                            alert('תאריכים לא תקינים. נא לבדוק את תאריכי היציאה והחזרה.');
+                            return;
+                          }
+                          
+                          // Create a more robust duplicate check using a combination of date, time, and description
+                          const existingTaskKeys = new Set();
+                          editingTasks.forEach(t => {
+                            const key = `${String(t.dateLabel || '').trim()}-${String(t.time || '').trim()}-${String(t.description || '').trim()}`;
+                            existingTaskKeys.add(key);
+                          });
+                          
+                          // Generate new tasks for all days
+                          const allNewTasks = [];
+                          days.forEach(day => {
+                            DEFAULT_ALMA_TASKS.forEach((t, i) => {
+                              const taskKey = `${String(day).trim()}-${String(t.time || '').trim()}-${String(t.description || '').trim()}`;
+                              // Only add if this exact task doesn't already exist
+                              if (!existingTaskKeys.has(taskKey)) {
+                                allNewTasks.push({
+                                  id: `t-gen-${day}-${i}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                                  shiftId: editingShift.id,
+                                  description: t.description,
+                                  time: t.time,
+                                  dateLabel: day,
+                                  assignedTo: ""
+                                });
+                                // Mark as existing to prevent duplicates in the same batch
+                                existingTaskKeys.add(taskKey);
+                              }
+                            });
+                          });
+                          
+                          if (allNewTasks.length === 0) {
+                            alert('כל המשימות כבר קיימות עבור התאריכים שנבחרו');
+                            return;
+                          }
+                          
+                          setEditingTasks([...editingTasks, ...allNewTasks]);
+                        }} className="text-[9px] bg-indigo-50 px-2 py-1 rounded font-black uppercase text-indigo-400 border">ייצר ברירת מחדל</button></div>
                        <div className="space-y-3">
                           {editingTasks.map(t => (
                              <div key={t.id} className="bg-slate-50 p-3 rounded-2xl space-y-2 border relative">

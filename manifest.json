@@ -9,13 +9,13 @@
   "theme_color": "#f43f5e",
   "icons": [
     {
-      "src": "https://api.dicebear.com/7.x/avataaars/svg?seed=Alma&backgroundColor=f43f5e",
+      "src": "https://api.dicebear.com/7.x/avataaars/svg?seed=fdg&backgroundColor=f43f5e",
       "sizes": "192x192",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     },
     {
-      "src": "https://api.dicebear.com/7.x/avataaars/svg?seed=Alma&backgroundColor=f43f5e",
+      "src": "https://api.dicebear.com/7.x/avataaars/svg?seed=fdg&backgroundColor=f43f5e",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"

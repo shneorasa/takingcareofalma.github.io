@@ -113,6 +113,7 @@
       const [editingShift, setEditingShift] = useState(null);
       const [editingTasks, setEditingTasks] = useState([]);
       const [editingUser, setEditingUser] = useState(null);
+      const [editingTemplate, setEditingTemplate] = useState(null);
       const [passwordInput, setPasswordInput] = useState("");
       const [selectedMemberId, setSelectedMemberId] = useState("");
       const [authError, setAuthError] = useState("");
@@ -127,6 +128,26 @@
       });
 
       useEffect(() => {
+        // Apply dark mode immediately on mount using initial state
+        const initialDarkMode = (() => {
+          try {
+            const saved = localStorage.getItem('darkMode');
+            if (saved !== null) return saved === 'true';
+            return window.matchMedia('(prefers-color-scheme: dark)').matches;
+          } catch (e) {
+            return false;
+          }
+        })();
+        
+        if (initialDarkMode) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }, []);
+
+      useEffect(() => {
+        // Update dark mode when state changes
         if (darkMode) {
           document.documentElement.classList.add('dark');
         } else {
@@ -1166,10 +1187,106 @@
                   </div>
                 )}
 
+                {adminView === 'templates' && (
+                  <div className="space-y-6 animate-in">
+                    <div className="flex items-center justify-between">
+                      <button onClick={() => setAdminView('dashboard')} className="flex items-center gap-2 text-slate-400 dark:text-slate-500 font-bold px-2">
+                        <ChevronLeft size={20} /> חזרה
+                      </button>
+                      <button onClick={() => { 
+                        setEditingTemplate({ 
+                          id: `tpl-${Date.now()}`, 
+                          name: '', 
+                          description: '', 
+                          tasks: [] 
+                        }); 
+                        setAdminView('edit_template'); 
+                      }} className="bg-purple-500 dark:bg-purple-600 text-white px-4 py-2 rounded-2xl font-black text-sm flex items-center gap-2">
+                        <Plus size={18}/> תבנית חדשה
+                      </button>
+                    </div>
+                    {templates.length === 0 ? (
+                      <div className="text-center py-20 premium-card text-slate-300 dark:text-slate-500 font-bold italic">אין תבניות. צור תבנית ראשונה.</div>
+                    ) : (
+                      templates.map(t => (
+                        <div key={t.id} className="premium-card p-5 border-r-[10px] border-purple-500 dark:border-purple-600 flex justify-between items-center">
+                          <div>
+                            <p className="font-black text-slate-800 dark:text-slate-100 leading-tight mb-1">{t.name}</p>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-400 font-black tracking-tighter uppercase">{t.description || 'ללא תיאור'}</p>
+                            <p className="text-[9px] text-slate-300 dark:text-slate-500 mt-1">{t.tasks.length} משימות</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => { setEditingTemplate({...t}); setAdminView('edit_template'); }} className="p-3 bg-purple-50 dark:bg-purple-900/20 text-purple-500 dark:text-purple-400 rounded-2xl">
+                              <Edit2 size={20}/>
+                            </button>
+                            <button onClick={() => deleteTemplateFromCloud(t.id)} className="p-3 bg-red-50 dark:bg-red-900/20 text-red-300 dark:text-red-400 rounded-2xl">
+                              <Trash2 size={20}/>
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {adminView === 'edit_template' && editingTemplate && (
+                  <div className="space-y-6 animate-in pb-12 px-2">
+                    <div className="flex items-center justify-between">
+                      <button onClick={() => { setEditingTemplate(null); setAdminView('templates'); }} className="text-slate-400 dark:text-slate-500 font-bold tracking-tighter flex items-center gap-2">
+                        <ChevronLeft size={20} /> ביטול
+                      </button>
+                      <button onClick={() => saveTemplateToCloud(editingTemplate)} className="bg-purple-500 dark:bg-purple-600 text-white px-6 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2">
+                        <Save size={18}/> שמור
+                      </button>
+                    </div>
+                    <div className="premium-card p-7 space-y-4">
+                      <h3 className="font-black text-slate-800 dark:text-slate-100 text-xl border-b dark:border-slate-700 pb-3 mb-4 tracking-tighter">נתוני תבנית</h3>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 uppercase block mb-2">שם תבנית</label>
+                          <input value={editingTemplate.name} onChange={e => setEditingTemplate({...editingTemplate, name: e.target.value})} placeholder="נסיעת סוף שבוע" className="w-full" />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 uppercase block mb-2">תיאור (אופציונלי)</label>
+                          <input value={editingTemplate.description || ''} onChange={e => setEditingTemplate({...editingTemplate, description: e.target.value})} placeholder="משימות לסוף שבוע רגיל" className="w-full" />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 uppercase block mb-2">משימות בתבנית</label>
+                          <div className="space-y-2">
+                            {editingTemplate.tasks.map((task, idx) => (
+                              <div key={idx} className="bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl flex gap-2 border dark:border-slate-700">
+                                <input value={task.description} onChange={e => {
+                                  const newTasks = [...editingTemplate.tasks];
+                                  newTasks[idx].description = e.target.value;
+                                  setEditingTemplate({...editingTemplate, tasks: newTasks});
+                                }} placeholder="תיאור משימה" className="flex-1 text-sm" />
+                                <input type="time" value={task.time} onChange={e => {
+                                  const newTasks = [...editingTemplate.tasks];
+                                  newTasks[idx].time = e.target.value;
+                                  setEditingTemplate({...editingTemplate, tasks: newTasks});
+                                }} className="w-24 text-sm" />
+                                <button onClick={() => {
+                                  const newTasks = editingTemplate.tasks.filter((_, i) => i !== idx);
+                                  setEditingTemplate({...editingTemplate, tasks: newTasks});
+                                }} className="text-red-400 dark:text-red-500 p-1 hover:text-red-600">
+                                  <Trash size={16}/>
+                                </button>
+                              </div>
+                            ))}
+                            <button onClick={() => setEditingTemplate({...editingTemplate, tasks: [...editingTemplate.tasks, {description: 'משימה חדשה', time: '16:00'}]})} className="w-full p-3 border-2 border-dashed rounded-2xl text-slate-300 dark:text-slate-600 font-black">
+                              + הוסף משימה
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {adminView === 'edit_user' && editingUser && (
                   <div className="space-y-6 animate-in pb-12 px-2">
                     <div className="flex items-center justify-between">
-                      <button onClick={() => { setEditingUser(null); setAdminView('users'); }} className="text-slate-400 font-bold tracking-tighter flex items-center gap-2"><ChevronLeft size={20} /> ביטול</button>
+                      <button onClick={() => { setEditingUser(null); setAdminView('users'); }} className="text-slate-400 dark:text-slate-500 font-bold tracking-tighter flex items-center gap-2"><ChevronLeft size={20} /> ביטול</button>
                       <button onClick={() => saveUserToCloud(editingUser)} className="bg-emerald-500 text-white px-6 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2"><Save size={18}/> שמור</button>
                     </div>
                     <div className="premium-card p-7 space-y-4">

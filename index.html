@@ -31,7 +31,10 @@
       overflow-x: hidden;
       transition: background-color 0.3s ease, color 0.3s ease;
     }
-    html.dark body,
+    html.dark body {
+      background-color: #0f172a !important;
+      color: #e2e8f0 !important;
+    }
     body.dark {
       background-color: #0f172a !important;
       color: #e2e8f0 !important;
@@ -41,7 +44,9 @@
       background-color: #f8fafc;
       transition: background-color 0.3s ease;
     }
-    html.dark #root,
+    html.dark #root {
+      background-color: #0f172a !important;
+    }
     #root.dark {
       background-color: #0f172a !important;
     }
@@ -53,9 +58,9 @@
     .glass { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
     .dark .glass { background: rgba(15, 23, 42, 0.9); }
     .premium-card { background: white; border-radius: 30px; box-shadow: 0 4px 20px -5px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.03); }
-    .dark .premium-card { background: #1e293b; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 20px -5px rgba(0,0,0,0.3); }
+    html.dark .premium-card, .dark .premium-card { background: #1e293b !important; border: 1px solid rgba(255,255,255,0.1) !important; box-shadow: 0 4px 20px -5px rgba(0,0,0,0.3) !important; }
     input, textarea, select { border-radius: 12px !important; outline: none !important; border: 1px solid #e2e8f0; padding: 12px; width: 100%; font-size: 14px; background: #fff; color: #1e293b; }
-    .dark input, .dark textarea, .dark select { border: 1px solid #334155; background: #1e293b; color: #e2e8f0; }
+    html.dark input, html.dark textarea, html.dark select, .dark input, .dark textarea, .dark select { border: 1px solid #334155 !important; background: #1e293b !important; color: #e2e8f0 !important; }
     input:focus { border-color: #f43f5e; box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.05); }
     .dark input:focus { border-color: #f43f5e; box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.2); }
     .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
@@ -140,32 +145,26 @@
       });
 
       useEffect(() => {
-        // Apply dark mode immediately on mount
+        // Apply dark mode on mount and when it changes
         const html = document.documentElement;
         const body = document.body;
+        
+        console.log('Dark mode state:', darkMode); // Debug
         
         if (darkMode) {
           html.classList.add('dark');
           body.classList.add('dark');
+          // Force background colors with inline styles
+          body.style.setProperty('background-color', '#0f172a', 'important');
+          body.style.setProperty('color', '#e2e8f0', 'important');
         } else {
           html.classList.remove('dark');
           body.classList.remove('dark');
+          // Force background colors with inline styles
+          body.style.setProperty('background-color', '#f8fafc', 'important');
+          body.style.setProperty('color', '#1e293b', 'important');
         }
-      }, []);
-
-      useEffect(() => {
-        // Update dark mode when state changes
-        const html = document.documentElement;
-        const body = document.body;
-        
-        if (darkMode) {
-          html.classList.add('dark');
-          body.classList.add('dark');
-        } else {
-          html.classList.remove('dark');
-          body.classList.remove('dark');
-        }
-        localStorage.setItem('darkMode', darkMode);
+        localStorage.setItem('darkMode', String(darkMode));
       }, [darkMode]);
 
       const loadData = async (showLoader = false) => {

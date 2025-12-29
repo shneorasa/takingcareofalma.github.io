@@ -31,11 +31,23 @@
       overflow-x: hidden;
       transition: background-color 0.3s ease, color 0.3s ease;
     }
-    .dark body {
-      background-color: #0f172a;
-      color: #e2e8f0;
+    html.dark body,
+    body.dark {
+      background-color: #0f172a !important;
+      color: #e2e8f0 !important;
     }
-    #root { min-height: 100vh; }
+    #root { 
+      min-height: 100vh;
+      background-color: #f8fafc;
+      transition: background-color 0.3s ease;
+    }
+    html.dark #root,
+    #root.dark {
+      background-color: #0f172a !important;
+    }
+    html.dark {
+      background-color: #0f172a !important;
+    }
     .animate-in { animation: fadeIn 0.4s cubic-bezier(0, 0, 0.2, 1); }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
     .glass { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
@@ -128,30 +140,30 @@
       });
 
       useEffect(() => {
-        // Apply dark mode immediately on mount using initial state
-        const initialDarkMode = (() => {
-          try {
-            const saved = localStorage.getItem('darkMode');
-            if (saved !== null) return saved === 'true';
-            return window.matchMedia('(prefers-color-scheme: dark)').matches;
-          } catch (e) {
-            return false;
-          }
-        })();
+        // Apply dark mode immediately on mount
+        const html = document.documentElement;
+        const body = document.body;
         
-        if (initialDarkMode) {
-          document.documentElement.classList.add('dark');
+        if (darkMode) {
+          html.classList.add('dark');
+          body.classList.add('dark');
         } else {
-          document.documentElement.classList.remove('dark');
+          html.classList.remove('dark');
+          body.classList.remove('dark');
         }
       }, []);
 
       useEffect(() => {
         // Update dark mode when state changes
+        const html = document.documentElement;
+        const body = document.body;
+        
         if (darkMode) {
-          document.documentElement.classList.add('dark');
+          html.classList.add('dark');
+          body.classList.add('dark');
         } else {
-          document.documentElement.classList.remove('dark');
+          html.classList.remove('dark');
+          body.classList.remove('dark');
         }
         localStorage.setItem('darkMode', darkMode);
       }, [darkMode]);
@@ -846,7 +858,7 @@
       if (!isAuthorized) {
         const selectedMember = members.find(m => m.id === selectedMemberId);
         return (
-          <div className="flex flex-col h-screen bg-rose-500 items-center justify-center p-10 text-white animate-in relative overflow-hidden">
+          <div className="flex flex-col h-screen bg-rose-500 dark:bg-rose-600 items-center justify-center p-10 text-white animate-in relative overflow-hidden">
              <div className="bg-white/20 p-8 rounded-[50px] mb-8 shadow-2xl border border-white/20"><Shield size={70} className="fill-white" /></div>
              <h1 className="text-3xl font-black mb-1 tracking-tighter text-center">דואגים לעלמא</h1>
              <div className="w-full max-w-xs space-y-6 mt-6">
@@ -907,9 +919,9 @@
 
       if (isCloudLoading) {
         return (
-          <div className="flex flex-col h-screen items-center justify-center bg-slate-50 gap-4">
+          <div className="flex flex-col h-screen items-center justify-center bg-slate-50 dark:bg-slate-900 gap-4">
              <div className="loader w-12 h-12"></div>
-             <p className="font-black text-rose-500 animate-pulse uppercase tracking-tighter">מסנכרן נתונים מהענן...</p>
+             <p className="font-black text-rose-500 dark:text-rose-400 animate-pulse uppercase tracking-tighter">מסנכרן נתונים מהענן...</p>
           </div>
         );
       }
@@ -936,7 +948,7 @@
             </div>
           </div>
 
-          <main className="flex-1 overflow-y-auto p-4 space-y-6 pb-32 no-scrollbar">
+          <main className="flex-1 overflow-y-auto p-4 space-y-6 pb-32 no-scrollbar bg-slate-50 dark:bg-slate-900">
             {activeTab === 'open' && (
               <div className="space-y-6 animate-in">
                  <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 flex items-center gap-2 px-2"><MapPin size={22} className="text-rose-500"/> לוח המשימות המשותף</h2>
